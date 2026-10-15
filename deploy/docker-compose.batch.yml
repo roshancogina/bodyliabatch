@@ -1,0 +1,9 @@
+services:
+  batch-portal:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: bodylia-batch-portal:latest
+    ports:
+      - "4173:80"
+    restart: unless-stopped
