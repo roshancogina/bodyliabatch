@@ -19,8 +19,14 @@ func testRouter(t *testing.T) *ginEngine {
 	// set APP_ENV=test (guardTestDB refuses anything else — see env_guard.go).
 	os.Setenv("APP_ENV", "test")
 	os.Setenv("DB_NAME", "bodyliabatch_test")
-	os.Setenv("DB_USER", "roshanshah")
-	os.Setenv("DB_HOST", "localhost")
+	// Default the DB role only when the runner did not provide one:
+	// local macOS uses the login user, CI runners use the service role.
+	if os.Getenv("DB_USER") == "" && os.Getenv("E2E_DB_USER") == "" {
+		os.Setenv("DB_USER", "roshanshah")
+	}
+	if os.Getenv("DB_HOST") == "" {
+		os.Setenv("DB_HOST", "localhost")
+	}
 	os.Setenv("JWT_SECRET", "test-secret-for-tdd-only")
 	db := mustTestDB(t)
 	resetTestDB(t, db)
