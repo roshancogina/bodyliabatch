@@ -1,0 +1,71 @@
+# batch.bodylia.in — PRODUCTION overlay (server 209.182.235.68).
+# Ports: 127.0.0.1:18033 -> web:80, 127.0.0.1:18034 -> api:8101.
+# Postgres is internal-only (no host mapping). Host nginx (bodyliabatch.conf)
+# terminates TLS and proxies to 18033. Compose project: batch-bodylia-prod
+# (separate from any dry-run stack, so volumes/networks never collide).
+name: batch-bodylia-prod
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-bodyliabatch_prod}
+      POSTGRES_USER: ${DB_USER:-bodylia}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bodylia} -d ${DB_NAME:-bodyliabatch_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  batch-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    image: bodylia-batch-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      PORT: 8101
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-bodylia}
+      DB_NAME: ${DB_NAME:-bodyliabatch_prod}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://batch.bodylia.in}
+      PROD_ADMIN_EMAIL: ${PROD_ADMIN_EMAIL:?PROD_ADMIN_EMAIL is required}
+      PROD_ADMIN_PASSWORD: ${PROD_ADMIN_PASSWORD:?PROD_ADMIN_PASSWORD is required}
+      PROD_ADMIN_NAME: ${PROD_ADMIN_NAME:-Bodylia Admin}
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:18034:8101"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8101/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  batch-portal:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        VITE_API_URL: "" # same-origin: browser calls /bff/*, host nginx proxies to :18034
+    image: bodylia-batch-portal:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      batch-api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18033:80"
+
+volumes:
+  pgdata:

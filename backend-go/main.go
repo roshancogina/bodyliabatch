@@ -40,6 +40,13 @@ func main() {
 	db := initDB()
 	defer db.Close()
 	mustApplyMigrations(db, "migrations")
+	if isProd() {
+		// Live site: purge demo/mock rows, ensure the env-provided admin.
+		// Fails closed (no boot) when PROD_ADMIN_* credentials are missing.
+		if err := prodBootstrap(db); err != nil {
+			log.Fatalf("production bootstrap failed: %v", err)
+		}
+	}
 	app := &App{store: NewStore(db)}
 	if os.Getenv("GIN_MODE") == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -92,7 +99,7 @@ func (a *App) handleHealth(c *gin.Context) {
 	_ = a.store.db.QueryRow(`SELECT current_database()`).Scan(&dbName)
 	c.JSON(200, gin.H{
 		"status": "healthy", "service": "batch-bodylia-in",
-		"time": time.Now().Format(time.RFC3339),
+		"time":     time.Now().Format(time.RFC3339),
 		"database": dbName, "batches": batches, "reports": reports,
 	})
 }

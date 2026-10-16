@@ -1,0 +1,139 @@
+name: deploy-batch-bodylia
+
+# CI/CD for batch.bodylia.in (server 209.182.235.68, SSH port 6150).
+# Flow: typecheck + vitest (100% gates) -> go vet + contract tests ->
+# Playwright e2e (isolated test DB) -> SSH deploy -> server-side compose
+# build (prod overlay) -> migrations auto-apply on API boot -> prod
+# bootstrap purges demo rows + ensures PROD_ADMIN_* -> nginx reload ->
+# content smoke (canonical, spaced, manufacturer, unknown, malformed).
+# Secrets (GitHub Settings > Secrets and variables > Actions):
+#   SSH_PRIVATE_KEY   — /Users/roshanshah/.ssh/github_deploy_key (private half)
+#   DB_PASSWORD       — production Postgres password (vault-generated)
+#   JWT_SECRET        — production JWT secret (32+ random chars)
+#   PROD_ADMIN_EMAIL  — roshan@bodylia.in
+#   PROD_ADMIN_PASSWORD — production admin password (vault-generated)
+# Optional vars: PROD_ADMIN_NAME (default "Bodylia Admin").
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DEPLOY_DIR: /opt/bodyliabatch
+  SSH_PORT: "6150"
+  SSH_USER: deployuser
+  SSH_HOST: 209.182.235.68
+
+jobs:
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npx vitest run --coverage
+
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: bodyliabatch_test
+          POSTGRES_USER: bodylia
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U bodylia -d bodyliabatch_test"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      APP_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: bodylia
+      DB_PASSWORD: ci-test-only
+      DB_NAME: bodyliabatch_test
+      JWT_SECRET: ci-test-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: backend-go/go.sum
+      - run: go vet ./...
+        working-directory: backend-go
+      - run: go test ./... -count=1
+        working-directory: backend-go
+
+  e2e:
+    needs: [frontend, backend]
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: bodyliabatch_test
+          POSTGRES_USER: bodylia
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U bodylia -d bodyliabatch_test"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      APP_ENV: test
+      DB_HOST: localhost
+      DB_USER: bodylia
+      DB_PASSWORD: ci-test-only
+      DB_NAME: bodyliabatch_test
+      JWT_SECRET: ci-test-only
+      E2E_API_URL: http://127.0.0.1:8101
+      E2E_BASE_URL: http://127.0.0.1:5175
+      E2E_DB_USER: bodylia
+      E2E_ADMIN_EMAIL: admin@bodylia.in
+      E2E_ADMIN_PASSWORD: Bodylia@2026
+      VITE_API_URL: http://127.0.0.1:8101
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: backend-go/go.sum
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: DB=bodyliabatch_test sh scripts/db-reset.sh
+      - run: npx playwright test --reporter=list
+
+  deploy:
+    needs: [frontend, backend, e2e]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
+      - name: Sync repo to server
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "mkdir -p $DEPLOY_DIR && git -C $DEPLOY_DIR rev-parse --is-inside-work-tree 2>/dev/null || git clone https://github.com/roshancogina/bodyliabatch.git $DEPLOY_DIR"
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "git -C $DEPLOY_DIR fetch origin main && git -C $DEPLOY_DIR reset --hard origin/main"
+      - name: Build + migrate + smoke via server script
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PROD_ADMIN_EMAIL: ${{ secrets.PROD_ADMIN_EMAIL }}
+          PROD_ADMIN_PASSWORD: ${{ secrets.PROD_ADMIN_PASSWORD }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DB_PASSWORD='$DB_PASSWORD' JWT_SECRET='$JWT_SECRET' PROD_ADMIN_EMAIL='$PROD_ADMIN_EMAIL' PROD_ADMIN_PASSWORD='$PROD_ADMIN_PASSWORD' IMAGE_TAG='${{ github.sha }}' bash $DEPLOY_DIR/deploy/server-deploy.sh"
