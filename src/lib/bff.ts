@@ -44,7 +44,7 @@ function aliasEntries(b: BatchRecord): BatchAlias[] {
  * Order: exact canonical (incl. space-tolerant) → exact mapped alias →
  * compact (punctuation-insensitive) match. Returns null when nothing matches.
  */
-export function resolveBatch(rawInput: string, batches: BatchRecord[] = mockBatches()): ResolvedBatch | null {
+export function resolveBatch(rawInput: string, batches: BatchRecord[] = []): ResolvedBatch | null {
   const norm = normaliseAlias(rawInput)
   if (!norm) return null
 
@@ -72,7 +72,7 @@ export function resolveBatch(rawInput: string, batches: BatchRecord[] = mockBatc
 }
 
 /** All canonical batches whose canonical code OR any mapped alias contains the query (admin search). */
-export function searchBatches(query: string, batches: BatchRecord[] = mockBatches()): BatchRecord[] {
+export function searchBatches(query: string, batches: BatchRecord[] = []): BatchRecord[] {
   const n = normaliseAlias(query)
   if (!n) return batches
   const compact = compactKey(n)
@@ -86,31 +86,12 @@ export function searchBatches(query: string, batches: BatchRecord[] = mockBatche
 }
 
 
-/**
- * Dev/test-only batch list. Loaded LAZILY so bundlers never pull the mock
- * fixtures (or the mock store) into the public production chunk — static
- * `import { store }` was the WSOD vector (Oct 2026). Production callers
- * always hit the remote seam first (useRemoteBff), so this stays empty.
- */
-function mockBatches(): BatchRecord[] {
-  return []
-}
 
-const WINDOW_MS = 60_000
-let hits: number[] = []
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-export async function lookupBatch(batch: string, _now: Date = new Date()): Promise<LookupResult> {
+export async function lookupBatch(batch: string): Promise<LookupResult> {
   if (useRemoteBff()) return remoteLookup(batch)
-  // No mock fallback in the prod-safe client: dev/test exercise the mock
-  // through lib/mock-bff.ts (explicit opt-in, never bundled for prod).
-  // Keep the sentinel error path unit-testable without a database.
-  const norm = normaliseAlias(batch)
-  if (norm.endsWith('-9999') || compactKey(norm).endsWith('9999')) return { kind: 'error' }
-  void _now
-  void hits
-  await delay(450)
-  return { kind: 'not_found' }
+  // No local fallback: production always sets VITE_API_URL; dev/test use
+  // lib/mock-bff.ts explicitly. Fail closed instead of serving mock data.
+  throw new CaptchaError('invalid')
 }
 
 export class CaptchaError extends Error {
@@ -123,10 +104,8 @@ export async function submitReport(input: ReportOutput, captchaToken?: string): 
   if (useRemoteBff()) {
     return remoteSubmitReport(input, captchaToken ?? '')
   }
-  if (!captchaToken) throw new CaptchaError('missing')
-  await delay(600)
-  void hash
   void input
+  void captchaToken
   throw new CaptchaError('invalid')
 }
 
@@ -137,17 +116,10 @@ export async function trackReport(reference: string, email: string, captchaToken
   if (useRemoteBff()) {
     return remoteTrackReport(reference, email, captchaToken ?? '')
   }
-  if (!captchaToken) throw new CaptchaError('missing')
-  await delay(450)
+  void captchaToken
   void reference
   void email
   return { found: false }
-}
-
-function hash(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-  return h
 }
 
 // --- Remote Go service seam (VITE_API_URL) ---
@@ -208,9 +180,7 @@ export async function remoteLookup(batch: string, base = apiBase()): Promise<Loo
 export async function fetchRecalls(base = apiBase()): Promise<BatchRecord[]> {
   if (!useRemoteBff(base)) return []
   try {
-    const out = await api<{ recalls?: BatchRecord[] } | BatchRecord[]>('/bff/v1/recalls', undefined, base)
-    if (Array.isArray(out)) return out
-    return out.recalls ?? []
+    return await api<BatchRecord[]>('/bff/v1/recalls', undefined, base)
   } catch {
     return []
   }

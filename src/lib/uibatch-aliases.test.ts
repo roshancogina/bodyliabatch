@@ -172,9 +172,14 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
     store.set(() => ({ settings: { ...store.get().settings, rateLimitPerMinute: 100 } }))
   })
 
-  it('lookupBatch maps -9999 codes to error', async () => {
-    const res = await lookupBatch('PE-2610-9999', new Date('2027-06-01T00:00:00Z'))
-    expect(res.kind).toBe('error')
+  it('lookupBatch fails closed without a remote API (no mock fallback)', async () => {
+    vi.stubEnv('VITE_API_URL', '')
+    await expect(lookupBatch('PE-2610-9999')).rejects.toBeInstanceOf(CaptchaError)
+    await expect(submitReport(
+      { fullName: 'No API', email: 'n@e.com', phone: '', batch: 'PE-2610-WL01', channel: 'Amazon', message: 'No remote API configured here.', consent: true },
+      'tok',
+    )).rejects.toBeInstanceOf(CaptchaError)
+    expect(await trackReport('SR-2026-00001', 'n@e.com', 'tok')).toEqual({ found: false })
   })
 
   it('submitReport + trackReport require captcha, then round-trip', async () => {
