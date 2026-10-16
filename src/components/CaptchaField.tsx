@@ -14,6 +14,7 @@ import {
   type CaptchaFailReason,
 } from '../lib/captcha'
 import { apiBase } from '../lib/bff'
+import { IS_PROD_BUILD } from '../lib/runtime-env'
 import { cn } from '../lib/utils'
 
 export type CaptchaState =
@@ -29,7 +30,12 @@ function isBypassed(): boolean {
 }
 
 async function fetchChallenge(base = apiBase()): Promise<CaptchaChallenge | null> {
-  if (!base) return null
+  // Production portals build with VITE_API_URL="" → same-origin /bff/v1/...
+  // (host nginx proxies to the Go service) — the challenge MUST still be
+  // fetched from the server there, otherwise the client would self-solve a
+  // local dev-secret challenge the API always rejects (HMAC mismatch).
+  // Dev/test with an empty base is mock mode: skip the network attempt.
+  if (!base && !IS_PROD_BUILD) return null
   try {
     const res = await fetch(`${base}/bff/v1/captcha/challenge`)
     if (!res.ok) return null
