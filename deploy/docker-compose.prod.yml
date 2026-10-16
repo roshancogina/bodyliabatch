@@ -39,6 +39,7 @@ services:
       DB_NAME: ${DB_NAME:-bodyliabatch_prod}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      CAPTCHA_SECRET: ${CAPTCHA_SECRET:?CAPTCHA_SECRET is required}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://batch.bodylia.in}
       PROD_ADMIN_EMAIL: ${PROD_ADMIN_EMAIL:?PROD_ADMIN_EMAIL is required}
       PROD_ADMIN_PASSWORD: ${PROD_ADMIN_PASSWORD:?PROD_ADMIN_PASSWORD is required}
