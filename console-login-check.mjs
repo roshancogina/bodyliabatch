@@ -49,9 +49,11 @@ await page.getByRole('button', { name: /change password/i }).click()
 await page.waitForSelector('text=Password changed', { timeout: 20_000 }).catch(() => fail('password change did not confirm'))
 step('password changed via My account')
 
-// 4. Sign out, then sign in with the NEW password
+// 4. Sign out (confirmation screen → "Sign in again"), then sign in with the NEW password
 await page.getByRole('button', { name: /sign out/i }).click()
-await page.waitForSelector('h1:has-text("Staff sign in")', { timeout: 15_000 }).catch(() => fail('sign-out did not return to sign-in'))
+await page.waitForSelector('text=signed out', { timeout: 15_000 }).catch(() => fail('sign-out confirmation did not appear'))
+await page.getByRole('button', { name: /sign in again/i }).click()
+await page.waitForSelector('h1:has-text("Staff sign in")', { timeout: 15_000 }).catch(() => fail('did not return to sign-in'))
 await page.fill('input[autocomplete="username"]', EMAIL)
 await page.fill('input[autocomplete="current-password"]', TEMP)
 await page.waitForTimeout(2_500)
