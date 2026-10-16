@@ -45,7 +45,7 @@ describe('frontend data isolation', () => {
     const offenders: string[] = []
     for (const f of scan(join(here, '..'))) {
       if (f.includes('.test.')) continue
-      const rel = f.split('bodyliabatch/')[1] ?? f
+      const rel = f.split(`${join(here, '..')}/`)[1] ?? f
       const src = readFileSync(f, 'utf8')
       if (/https?:\/\/(localhost|127\.0\.0\.1):8101/.test(src)) {
         offenders.push(`${rel}: hardcoded API URL`)

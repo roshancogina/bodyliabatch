@@ -41,6 +41,12 @@ func mustTestDB(t *testing.T) *sql.DB {
 	if err := db.Ping(); err != nil {
 		t.Fatalf("ping test db: %v", err)
 	}
+	// Isolation bootstrap: run the SAME ordered migration ledger production
+	// uses, so tests never depend on ambient schema (fresh CI service DBs
+	// start empty — seeds/relax steps assume 001's tables exist).
+	if err := applyMigrations(db, "migrations"); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
 	return db
 }
 
