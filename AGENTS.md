@@ -86,8 +86,8 @@ shows pack quantity + MRP (`BatchFacts`).
 
 | Layer | Command | Covers |
 |---|---|---|
-| Frontend units | `npm test` (vitest) | `uibatch-standard`, `uibatch-aliases`, `captcha`, `admin-schemas` (84 tests) |
-| API contract | `npm run test:api` (Go, `bodyliabatch_test`) | public BFF + admin JWT + mapped register/search + nomenclature + login PoW + rate-limit override (25 tests) |
+| Frontend units | `npm test` (vitest) | `uibatch-standard`, `uibatch-aliases`, `captcha`, `admin-schemas` (98 tests) |
+| API contract | `npm run test:api` (Go, `bodyliabatch_test`) | public BFF + admin JWT + insights aggregates + mapped register/search + nomenclature + login PoW + rate-limit override (32 tests) |
 | End-to-end | `npm run test:e2e` (Playwright, Chromium) | real Postgres + Go + Vite journeys (canonical, manufacturer, spaced, malformed, unknown, 404, register+verify) |
 | Types | `npm run typecheck` | `tsc --noEmit` clean |
 
@@ -109,7 +109,7 @@ Manual checklist before ship:
 - Runner: `backend-go/migrate.go` applies each file once (ledger `schema_migrations`); also `scripts/db-migrate.sh`, `scripts/db-reset.sh`, `scripts/services-up.sh`.
 - API (Go + Gin, port 8101): `GET /api/health`, `GET /bff/v1/batches/:batch` (alias-aware genuine/expired/recalled/404 + DB rate limit),
   `POST /bff/v1/reports`, `POST /bff/v1/reports/track` (reference+email, no leak),
-  `GET /bff/v1/recalls`, `POST /api/auth/login` (bcrypt + 15-min JWT), `/api/admin/*` (JWT: me, batches search/get/register, alias add/remove, all audited).
+  `GET /bff/v1/recalls`, `POST /api/auth/login` (bcrypt + 15-min JWT), `/api/admin/*` (JWT: me, insights (console Overview aggregates), batches search/get/register, alias add/remove, all audited).
 - Frontend seam: `src/lib/bff.ts` uses the Go service when `VITE_API_URL` is set (`npm run dev:api`), else the in-memory mock (unit tests/preview).
 - E2e (`playwright.config.ts`, Chromium): `e2e/public-verify.spec.ts` (5 browser+API), `e2e/admin-batches.spec.ts` (3 API+browser).
 - Ports: API 8101, Vite 5175 locally (5173/5174 are taken by other Docker projects on this machine), preview 4173.
