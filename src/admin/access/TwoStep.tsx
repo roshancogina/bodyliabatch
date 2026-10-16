@@ -54,7 +54,7 @@ export function TwoStep({ user, go, className }: { user: StaffUser; go: (s: Acce
         </p>
       )}
       <form onSubmit={submit} noValidate className="flex flex-col gap-5">
-        <FormField id="code" label={recovery ? 'Recovery code' : 'Verification code'} description={recovery ? 'e.g. BDLRC-7Q4M-9X2K' : PREVIEW_AUTH_ENABLED ? `Preview code: ${PREVIEW_TOTP}` : 'Enter the 6-digit code from your authenticator app'} error={errors.code?.message}>
+        <FormField id="code" label={recovery ? 'Recovery code' : 'Verification code'} description={recovery ? 'e.g. BDLRC-XXXX-XXXX (from your invitation email)' : PREVIEW_AUTH_ENABLED ? `Preview code: ${PREVIEW_TOTP}` : 'Enter the 6-digit code from your authenticator app'} error={errors.code?.message}>
           {(a) => (
             <Input
               {...a}

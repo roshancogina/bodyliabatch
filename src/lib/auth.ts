@@ -43,23 +43,22 @@ export function can(user: StaffUser | null, p: Permission) {
 import { assertMockAllowed, PREVIEW_AUTH_ENABLED } from './runtime-env'
 assertMockAllowed('mock preview auth')
 
-export const PREVIEW_PASSWORD = previewEnv('VITE_PREVIEW_PASSWORD', 'Bodylia@2026')
-export const PREVIEW_TOTP = previewEnv('VITE_PREVIEW_TOTP', '246810')
-export const PREVIEW_RECOVERY = previewEnv('VITE_PREVIEW_RECOVERY', 'BDLRC-7Q4M-9X2K')
+export const PREVIEW_PASSWORD = previewEnv('VITE_PREVIEW_PASSWORD')
+export const PREVIEW_TOTP = previewEnv('VITE_PREVIEW_TOTP')
+export const PREVIEW_RECOVERY = previewEnv('VITE_PREVIEW_RECOVERY')
 export const MAX_ATTEMPTS = 5
 const LOCK_MINUTES = 15
 
 /**
  * Preview credential resolver. Values come from .env.development in local
- * work, NEVER from committed source. The second arg is a dev-only fallback so
- * a bare checkout still runs; production builds never reach here
+ * work, NEVER from committed source. Production builds never reach here
  * (assertMockAllowed above throws at module load).
  */
-function previewEnv(key: string, devFallback: string): string {
+function previewEnv(key: string): string {
   const v = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.[key]
   if (v) return v
   assertMockAllowed(`preview credential ${key}`)
-  return devFallback
+  return ''
 }
 
 const passwords = new Map<string, string>()

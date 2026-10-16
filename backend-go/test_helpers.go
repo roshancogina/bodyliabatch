@@ -14,6 +14,9 @@ func testConnStr() string {
 	host := getenv("DB_HOST", "localhost")
 	user := getenv("DB_USER", "roshanshah")
 	name := getenv("DB_NAME", "bodyliabatch_test")
+	if pw := getenv("DB_PASSWORD", ""); pw != "" {
+		return fmt.Sprintf("host=%s port=5432 user=%s password=%s dbname=%s sslmode=disable", host, user, pw, name)
+	}
 	return fmt.Sprintf("host=%s port=5432 user=%s dbname=%s sslmode=disable", host, user, name)
 }
 
