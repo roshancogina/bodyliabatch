@@ -5,10 +5,11 @@ import { KeyRound, Loader2, LogOut, Plus, Search, X } from 'lucide-react'
 import type { StaffUser } from '../data/admin-seed'
 import { ROLE_LABEL } from '../data/roles'
 import { aliasCode, type BatchRecord } from '../data/batches'
-import { apiBase } from '../lib/bff'
-import { changePassword, loadSession } from '../lib/auth'
+import { changePassword } from '../lib/auth'
 import { normaliseAlias } from '../lib/utils'
 import { toast } from '../lib/toast'
+import { adminApi, AuthExpired } from './admin-api'
+import { ProdOverview } from './ProdOverview'
 import { changePasswordSchema, type ChangePasswordInput } from './schemas'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -19,32 +20,12 @@ import { PasswordField } from './access/PasswordField'
  * Production staff console (API-backed). Renders ONLY in production builds —
  * never imports lib/store or data fixtures (those throw at module load in
  * prod, which is exactly what broke #/console before this existed).
- * Endpoints: GET /api/admin/batches?q=, POST/DELETE …/aliases, POST
- * /api/auth/password — all same-origin via host nginx, Bearer JWT session.
+ * Endpoints (shared adminApi in ./admin-api): GET /api/admin/insights,
+ * GET /api/admin/batches?q=, POST/DELETE …/aliases, POST /api/auth/password
+ * — all same-origin via host nginx, Bearer JWT session.
  */
-class AuthExpired extends Error {
-  constructor() {
-    super('Session expired — sign in again.')
-  }
-}
 
-async function adminApi<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
-  const session = loadSession()
-  const res = await fetch(`${apiBase()}${path}`, {
-    method: init.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
-    },
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
-  })
-  const data = (await res.json().catch(() => null)) as { error?: string } | null
-  if (res.status === 401) throw new AuthExpired()
-  if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`)
-  return data as T
-}
-
-type Tab = 'batches' | 'account'
+type Tab = 'overview' | 'batches' | 'account'
 
 export function ProdShell({
   user,
@@ -57,7 +38,7 @@ export function ProdShell({
   onSignOut: (reason: 'manual' | 'timeout') => void
   className?: string
 }) {
-  const [tab, setTab] = useState<Tab>('batches')
+  const [tab, setTab] = useState<Tab>('overview')
   const [batches, setBatches] = useState<BatchRecord[] | null>(null)
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
@@ -137,7 +118,7 @@ export function ProdShell({
         </div>
 
         <nav className="mt-6 flex gap-2" aria-label="Console sections">
-          {(['batches', 'account'] as const).map((t) => (
+          {(['overview', 'batches', 'account'] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -145,10 +126,13 @@ export function ProdShell({
               aria-current={tab === t ? 'page' : undefined}
               className={`min-h-11 rounded-md px-4 text-sm font-semibold transition-colors ${tab === t ? 'bg-graphite text-sand' : 'text-graphite hover:bg-sand'}`}
             >
-              {t === 'batches' ? 'Batches & aliases' : 'My account'}
+              {({ overview: 'Overview', batches: 'Batches & aliases', account: 'My account' } as const)[t]}
             </button>
           ))}
         </nav>
+        {tab === 'overview' && (
+          <ProdOverview user={user} onExpired={() => onSignOut('timeout')} onGoTab={(next) => setTab(next)} />
+        )}
         {tab === 'batches' && (
           <section aria-label="Batches and aliases" className="mt-6">
             <form

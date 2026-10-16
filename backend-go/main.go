@@ -83,6 +83,7 @@ func newRouter(db *sql.DB) *ginEngine {
 	admin := r.Group("/api/admin", app.authMiddleware())
 	{
 		admin.GET("/me", app.handleMe)
+		admin.GET("/insights", app.handleAdminInsights)
 		admin.GET("/batches", app.handleAdminListBatches)
 		admin.GET("/batches/:batch", app.handleAdminGetBatch)
 		admin.POST("/batches", app.handleAdminRegisterBatch)

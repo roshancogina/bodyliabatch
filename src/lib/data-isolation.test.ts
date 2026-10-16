@@ -46,7 +46,9 @@ describe('frontend data isolation', () => {
     // imports may only reference prod-safe modules (bff, auth, runtime-env,
     // roles, batches, ui components).
     const adminDir = join(here, '..', 'admin')
-    const entries = ['AdminApp.tsx', 'ProdShell.tsx', 'access/SignIn.tsx']
+    // ProdOverview/admin-api/insights are the API-backed console modules;
+    // all must stay import-safe in production builds too.
+    const entries = ['AdminApp.tsx', 'ProdShell.tsx', 'ProdOverview.tsx', 'admin-api.ts', 'insights.ts', 'access/SignIn.tsx']
     const banned = /from\s+['"](\.\.\/)*(data\/(products|admin-seed|mock-batches)|lib\/store)['"]/
     const offenders: string[] = []
     for (const rel of entries) {
