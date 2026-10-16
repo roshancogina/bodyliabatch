@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import { ROLE_LABEL, type Role, type StaffUser } from '../../data/admin-seed'
+import { type Role, type StaffUser } from '../../data/admin-seed'
+import { ROLE_LABEL } from '../../data/roles'
 import { useStore } from '../../lib/store'
 import { Dialog, DialogContent } from '../../components/ui/dialog'
 import { Button } from '../../components/ui/button'

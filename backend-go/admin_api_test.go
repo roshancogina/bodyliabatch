@@ -85,3 +85,49 @@ func TestAdminRegisterBatchWithAliases(t *testing.T) {
 		t.Fatalf("duplicate alias = %d, want 409/400: %s", w3.Code, w3.Body.String())
 	}
 }
+
+// Contract: staff can change their own password (used by My account in the
+// console), wrong current password and weak candidates are rejected, and the
+// change actually takes effect on the next login.
+func TestAdminChangePassword(t *testing.T) {
+	r := testRouter(t)
+	tok := adminToken(t, r)
+
+	w := doReq(t, r, "POST", "/api/auth/password",
+		map[string]any{"current": "nope", "password": "BrandNewPassw0rd!"}, "")
+	if w.Code != 401 {
+		t.Fatalf("unauthenticated change = %d, want 401", w.Code)
+	}
+	w = doReq(t, r, "POST", "/api/auth/password",
+		map[string]any{"current": "WrongOne1!", "password": "BrandNewPassw0rd!"}, tok)
+	if w.Code != 400 {
+		t.Fatalf("wrong current = %d, want 400: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "POST", "/api/auth/password",
+		map[string]any{"current": "Bodylia@2026", "password": "short"}, tok)
+	if w.Code != 400 {
+		t.Fatalf("weak new password = %d, want 400: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "POST", "/api/auth/password",
+		map[string]any{"current": "Bodylia@2026", "password": "Bodylia@2026"}, tok)
+	if w.Code != 400 {
+		t.Fatalf("same-as-current = %d, want 400: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "POST", "/api/auth/password",
+		map[string]any{"current": "Bodylia@2026", "password": "BrandNewPassw0rd!"}, tok)
+	if w.Code != 200 {
+		t.Fatalf("change = %d, want 200: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "POST", "/api/auth/login",
+		withCaptcha(map[string]any{"email": "admin@bodylia.in", "password": "Bodylia@2026"},
+			solveTestCaptcha(t, fetchChallenge(t, r))), "")
+	if w.Code != 401 {
+		t.Fatalf("old password after change = %d, want 401: %s", w.Code, w.Body.String())
+	}
+	// Restore the shared seed password (policy-compliant) for later tests.
+	w = doReq(t, r, "POST", "/api/auth/password",
+		map[string]any{"current": "BrandNewPassw0rd!", "password": "Bodylia@2026"}, tok)
+	if w.Code != 200 {
+		t.Fatalf("restore = %d, want 200: %s", w.Code, w.Body.String())
+	}
+}

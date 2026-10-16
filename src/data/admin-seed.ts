@@ -107,17 +107,9 @@ const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOStr
  * environment; canonical DATA (users, reports, settings rows) comes from
  * Postgres via the Go API in production.
  */
-export const ROLE_LABEL: Record<Role, string> = {
-  admin: 'Administrator',
-  quality: 'Quality analyst',
-  support: 'Customer support',
-}
-
-export const ROLE_DESCRIPTION: Record<Role, string> = {
-  admin: 'Everything, including staff, catalogue and settings.',
-  quality: 'Release, correct and recall batches; investigate counterfeits.',
-  support: 'Resolve customer reports and reply. Batches are view-only.',
-}
+// ROLE_LABEL + ROLE_DESCRIPTION moved to ./roles.ts (prod-safe module) —
+// re-exported here for preview-only consumers.
+export { ROLE_LABEL, ROLE_DESCRIPTION } from './roles'
 
 export const STATUS_LABEL: Record<ReportStatus, string> = {
   new: 'New',

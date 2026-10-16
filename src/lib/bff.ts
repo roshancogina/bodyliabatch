@@ -2,6 +2,7 @@ import { type BatchAlias, type BatchRecord } from '../data/batches'
 import type { SuspiciousReport } from '../data/admin-seed'
 import type { ReportOutput } from './schemas'
 import { compactKey, normaliseAlias, normaliseBatch } from './utils'
+import { IS_PROD_BUILD } from './runtime-env'
 
 /**
  * Browser-side client for the Bodylia BFF (batch.bodylia.in/bff/v1).
@@ -124,7 +125,11 @@ export async function trackReport(reference: string, email: string, captchaToken
 
 // --- Remote Go service seam (VITE_API_URL) ---
 
-/** Base URL of the Go service. Empty string keeps the in-memory mock. */
+/**
+ * Base URL of the Go service. Empty string = same-origin (production portal
+ * builds pass VITE_API_URL=""; host nginx proxies /bff/* and /api/* to the
+ * API) — remote-ness is decided by useRemoteBff, not by this value alone.
+ */
 export function apiBase(): string {
   const stubbed = (globalThis as { __VITE_API_URL?: string }).__VITE_API_URL
   const env = (import.meta as unknown as { env?: { VITE_API_URL?: string } }).env
@@ -148,7 +153,12 @@ export function stubApiBaseForTests(base: string): void {
 }
 
 export function useRemoteBff(base = apiBase()): boolean {
-  return base !== ''
+  // Non-empty base → remote (dev/e2e point at the Go service). Empty base →
+  // remote in PRODUCTION builds only: the prod portal builds with
+  // VITE_API_URL="" and calls same-origin /bff/* (proxied by host nginx), so
+  // an empty base there must never fall back to mock/fail-closed local paths.
+  if (base !== '') return true
+  return IS_PROD_BUILD
 }
 
 async function api<T>(path: string, init?: RequestInit, base = apiBase()): Promise<T> {

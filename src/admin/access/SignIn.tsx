@@ -7,7 +7,7 @@ import { signInSchema, type SignInInput } from '../schemas'
 import { AuthError, PREVIEW_PASSWORD, PREVIEW_TOTP, signIn } from '../../lib/auth'
 import { describeCaptchaError } from '../../lib/captcha'
 import { PREVIEW_AUTH_ENABLED } from '../../lib/runtime-env'
-import { ROLE_LABEL } from '../../data/admin-seed'
+import { ROLE_LABEL } from '../../data/roles'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { FormField } from '../../components/ui/form-field'
@@ -41,8 +41,10 @@ export function SignIn({ go, onExit, className }: { go: (s: AccessStep) => void;
       return
     }
     try {
-      const user = await signIn(email, password)
-      go({ step: 'twostep', user })
+      const user = await signIn(email, password, captchaToken ?? undefined)
+      // Production API issues the session at login (JWT) — no second step.
+      // Preview keeps the 2-step verification flow.
+      go(PREVIEW_AUTH_ENABLED ? { step: 'twostep', user } : { step: 'shell', user })
     } catch (e) {
       const err = e as AuthError
       setError({ text: err.message, lockedUntil: err.lockedUntil })
@@ -90,11 +92,13 @@ export function SignIn({ go, onExit, className }: { go: (s: AccessStep) => void;
             {captchaError}
           </p>
         )}
-        <div className="-mt-2 flex justify-end">
-          <button type="button" onClick={() => go({ step: 'forgot' })} className="inline-flex min-h-11 items-center text-sm font-semibold text-burgundy underline underline-offset-4 hover:decoration-2">
-            Forgot password?
-          </button>
-        </div>
+        {PREVIEW_AUTH_ENABLED && (
+          <div className="-mt-2 flex justify-end">
+            <button type="button" onClick={() => go({ step: 'forgot' })} className="inline-flex min-h-11 items-center text-sm font-semibold text-burgundy underline underline-offset-4 hover:decoration-2">
+              Forgot password?
+            </button>
+          </div>
+        )}
         <Button type="submit" size="lg" disabled={isSubmitting}>
           {isSubmitting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Lock aria-hidden="true" />}
           {isSubmitting ? 'Checking…' : 'Continue'}

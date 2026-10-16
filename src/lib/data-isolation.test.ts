@@ -25,11 +25,46 @@ describe('frontend data isolation', () => {
     }
   })
 
-  it('mock store and preview auth assert at module load', () => {
+  it('mock store asserts at module load; auth is import-safe in production', () => {
     const store = readFileSync(join(here, 'store.ts'), 'utf8')
-    const auth = readFileSync(join(here, 'auth.ts'), 'utf8')
     expect(store).toContain("assertMockAllowed('mock store')")
-    expect(auth).toContain("assertMockAllowed('mock preview auth')")
+    // auth.ts is statically imported by the production sign-in screen, so it
+    // must never throw at load and must not evaluate the mock store eagerly —
+    // preview-only flows reach the store via guarded dynamic import instead.
+    const auth = readFileSync(join(here, 'auth.ts'), 'utf8')
+    expect(auth).not.toMatch(/^assertMockAllowed\(/m)
+    expect(auth).not.toMatch(/from\s+['"]\.\/store['"]/)
+    expect(auth).toContain("await import('./store')")
+  })
+
+  it('console entry statically imports only production-safe modules', () => {
+    // Regression (Oct 2026): #/console broke because AdminApp statically
+    // imported lib/store, AdminShell, AcceptInvitation and (via SignIn)
+    // data/admin-seed — every one of those throws at module load in prod
+    // builds, killing the lazy chunk before the sign-in screen rendered.
+    // Preview-only modules must load via lazy(() => import(...)); static
+    // imports may only reference prod-safe modules (bff, auth, runtime-env,
+    // roles, batches, ui components).
+    const adminDir = join(here, '..', 'admin')
+    const entries = ['AdminApp.tsx', 'ProdShell.tsx', 'access/SignIn.tsx']
+    const banned = /from\s+['"](\.\.\/)*(data\/(products|admin-seed|mock-batches)|lib\/store)['"]/
+    const offenders: string[] = []
+    for (const rel of entries) {
+      const src = readFileSync(join(adminDir, rel), 'utf8')
+      const runtime = src
+        .split('\n')
+        .filter((line) => !/^\s*import\s+type\b/.test(line))
+        .join('\n')
+      const m = runtime.match(banned)
+      if (m) offenders.push(`${rel}: static import of mock-only module [${m[0]}]`)
+    }
+    expect(offenders).toEqual([])
+
+    const adminApp = readFileSync(join(adminDir, 'AdminApp.tsx'), 'utf8')
+    expect(adminApp).not.toMatch(/from\s+['"]\.\/AdminShell['"]/)
+    expect(adminApp).toMatch(/lazy\(\(\) => import\('\.\/AdminShell'\)/)
+    expect(adminApp).toMatch(/lazy\(\(\) => import\('\.\/access\/AcceptInvitation'\)/)
+    expect(adminApp).toMatch(/lazy\(\(\) => import\('\.\/access\/SetupTwoStep'\)/)
   })
 
   it('production render paths never import mock fixtures', () => {

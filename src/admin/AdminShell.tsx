@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   BarChart3, Building2, ExternalLink, FileWarning, Inbox, LayoutDashboard, LogOut, Package, ScrollText, Search, Settings as SettingsIcon, UserCircle, Users,
 } from 'lucide-react'
-import { ROLE_LABEL, type StaffUser } from '../data/admin-seed'
+import { type StaffUser } from '../data/admin-seed'
+import { ROLE_LABEL } from '../data/roles'
 import { GLYPH } from '../data/catalog-static'
 import { can, type Permission } from '../lib/auth'
 import { useStore } from '../lib/store'

@@ -1,14 +1,27 @@
-import React, { useState } from 'react'
+import React, { lazy, Suspense, useState } from 'react'
 import type { StaffUser } from '../data/admin-seed'
-import { store } from '../lib/store'
+import { clearSession } from '../lib/auth'
+import { PREVIEW_AUTH_ENABLED } from '../lib/runtime-env'
 import { SignIn } from './access/SignIn'
 import { TwoStep } from './access/TwoStep'
 import { ForgotPassword } from './access/ForgotPassword'
 import { ResetPassword } from './access/ResetPassword'
-import { AcceptInvitation } from './access/AcceptInvitation'
-import { SetupTwoStep } from './access/SetupTwoStep'
 import { SignedOut } from './access/SignedOut'
-import { AdminShell } from './AdminShell'
+import { ProdShell } from './ProdShell'
+
+/**
+ * Staff console entry and access flow.
+ *
+ * PRODUCTION-SAFE ROUTER (Oct 2026): this module and every STATIC import must
+ * evaluate cleanly in production builds — lib/store, data fixtures and their
+ * importers (AdminShell, AcceptInvitation, SetupTwoStep) throw at module load
+ * in prod, so they are lazy chunks that production never fetches. The prod
+ * shell is ProdShell, which talks to the Go API (JWT session).
+ * `onExit` returns to the public site.
+ */
+const AdminShell = lazy(() => import('./AdminShell').then((m) => ({ default: m.AdminShell })))
+const AcceptInvitation = lazy(() => import('./access/AcceptInvitation').then((m) => ({ default: m.AcceptInvitation })))
+const SetupTwoStep = lazy(() => import('./access/SetupTwoStep').then((m) => ({ default: m.SetupTwoStep })))
 
 export type AccessStep =
   | { step: 'signin' }
@@ -20,13 +33,21 @@ export type AccessStep =
   | { step: 'signedout'; reason: 'manual' | 'timeout' }
   | { step: 'shell'; user: StaffUser }
 
-/** Staff console entry and access flow. `onExit` returns to the public site. */
+const loading = (
+  <p role="status" className="mx-auto max-w-6xl px-5 py-16 text-graphite">Loading staff console…</p>
+)
+
 export function AdminApp({ onExit, className }: { onExit?: () => void; className?: string }) {
   const [s, setS] = useState<AccessStep>({ step: 'signin' })
   const go = (next: AccessStep) => setS(next)
 
   const signOut = (user: StaffUser, reason: 'manual' | 'timeout') => {
-    store.audit(user.name, reason === 'timeout' ? 'Session expired' : 'Signed out', user.email)
+    clearSession() // production JWT session (no-op in preview)
+    if (PREVIEW_AUTH_ENABLED) {
+      void import('../lib/store').then(({ store }) => {
+        store.audit(user.name, reason === 'timeout' ? 'Session expired' : 'Signed out', user.email)
+      })
+    }
     go({ step: 'signedout', reason })
   }
 
@@ -40,12 +61,27 @@ export function AdminApp({ onExit, className }: { onExit?: () => void; className
     case 'reset':
       return <ResetPassword className={className} email={s.email} go={go} />
     case 'invite':
-      return <AcceptInvitation className={className} email={s.email} go={go} />
+      return (
+        <Suspense fallback={loading}>
+          <AcceptInvitation className={className} email={s.email} go={go} />
+        </Suspense>
+      )
     case 'setup':
-      return <SetupTwoStep className={className} user={s.user} go={go} />
+      return (
+        <Suspense fallback={loading}>
+          <SetupTwoStep className={className} user={s.user} go={go} />
+        </Suspense>
+      )
     case 'signedout':
       return <SignedOut className={className} reason={s.reason} go={go} onExit={onExit} />
     case 'shell':
-      return <AdminShell className={className} user={s.user} onExit={onExit} onSignOut={(reason) => signOut(s.user, reason)} />
+      if (!PREVIEW_AUTH_ENABLED) {
+        return <ProdShell className={className} user={s.user} onExit={onExit} onSignOut={(reason) => signOut(s.user, reason)} />
+      }
+      return (
+        <Suspense fallback={loading}>
+          <AdminShell className={className} user={s.user} onExit={onExit} onSignOut={(reason) => signOut(s.user, reason)} />
+        </Suspense>
+      )
   }
 }

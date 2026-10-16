@@ -1,6 +1,6 @@
 import React from 'react'
 import { AlertCircle } from 'lucide-react'
-import { ROLE_DESCRIPTION, ROLE_LABEL } from '../../data/admin-seed'
+import { ROLE_DESCRIPTION, ROLE_LABEL } from '../../data/roles'
 import { acceptInvitation } from '../../lib/auth'
 import { useStore } from '../../lib/store'
 import { Button } from '../../components/ui/button'

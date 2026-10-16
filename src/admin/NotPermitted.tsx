@@ -1,6 +1,6 @@
 import React from 'react'
 import { ShieldOff } from 'lucide-react'
-import { ROLE_LABEL } from '../data/admin-seed'
+import { ROLE_LABEL } from '../data/roles'
 import { MATRIX, type Permission } from '../lib/auth'
 import { useStore } from '../lib/store'
 import { Button } from '../components/ui/button'

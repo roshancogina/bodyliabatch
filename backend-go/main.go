@@ -79,6 +79,7 @@ func newRouter(db *sql.DB) *ginEngine {
 	}
 
 	r.POST("/api/auth/login", app.handleLogin)
+	r.POST("/api/auth/password", app.authMiddleware(), app.handleChangePassword)
 	admin := r.Group("/api/admin", app.authMiddleware())
 	{
 		admin.GET("/me", app.handleMe)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -110,3 +111,75 @@ func currentUser(c *gin.Context) StaffUser {
 }
 
 var _ = http.StatusOK
+
+// POST /api/auth/password (Bearer) — change your own password.
+// Policy mirrors src/admin/schemas.ts PASSWORD_RULES (12+ chars, mixed
+// case, a number, a symbol, different from the current password).
+func (a *App) handleChangePassword(c *gin.Context) {
+	var in struct {
+		Current  string `json:"current"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(400, gin.H{"error": "Enter your current and new password."})
+		return
+	}
+	u := currentUser(c)
+	var hash string
+	if err := a.store.db.QueryRow(`SELECT password_hash FROM staff_users WHERE id=$1`, u.ID).Scan(&hash); err != nil {
+		c.JSON(500, gin.H{"error": "Could not load your account."})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Current)); err != nil {
+		c.JSON(400, gin.H{"error": "That isn’t your current password."})
+		return
+	}
+	if msg := passwordPolicyError(in.Password, in.Current); msg != "" {
+		c.JSON(400, gin.H{"error": msg})
+		return
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Could not update password"})
+		return
+	}
+	if _, err := a.store.db.Exec(`UPDATE staff_users SET password_hash=$1 WHERE id=$2`, string(newHash), u.ID); err != nil {
+		c.JSON(500, gin.H{"error": "Could not update password"})
+		return
+	}
+	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
+VALUES ($1,'Changed password',$2,'Own account')`, u.Name, u.Email)
+	c.JSON(200, gin.H{"ok": true})
+}
+
+func passwordPolicyError(password, current string) string {
+	if len(password) < 12 {
+		return "Your new password must be at least 12 characters."
+	}
+	hasUpper, hasLower, hasDigit, hasSymbol := false, false, false, false
+	for _, r := range password {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		default:
+			hasSymbol = true
+		}
+	}
+	if !hasUpper || !hasLower {
+		return "Use both an uppercase and a lowercase letter."
+	}
+	if !hasDigit {
+		return "Include at least one number."
+	}
+	if !hasSymbol {
+		return "Include at least one symbol, e.g. @ # !"
+	}
+	if password == current {
+		return "Choose a password you haven’t used here before."
+	}
+	return ""
+}
