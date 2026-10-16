@@ -12,7 +12,9 @@ import (
 
 func testConnStr() string {
 	host := getenv("DB_HOST", "localhost")
-	user := getenv("DB_USER", "roshanshah")
+	// CI runners create the postgres superuser (bodylia); local macOS default
+	// is the login user (roshanshah). DB_USER wins, E2E_DB_USER is fallback.
+	user := getenv("DB_USER", getenv("E2E_DB_USER", "roshanshah"))
 	name := getenv("DB_NAME", "bodyliabatch_test")
 	if pw := getenv("DB_PASSWORD", ""); pw != "" {
 		return fmt.Sprintf("host=%s port=5432 user=%s password=%s dbname=%s sslmode=disable", host, user, pw, name)
