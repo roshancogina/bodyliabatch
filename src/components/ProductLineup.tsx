@@ -1,10 +1,12 @@
 import React from 'react'
 import { PRODUCTS } from '../data/products'
 
-/** Decorative arrangement of the six supplied pack shots on a sand plinth. */
+/** Decorative arrangement of the supplied pack shots on a sand plinth. */
 export function ProductLineup() {
-  const back = [PRODUCTS.CN, PRODUCTS.PD]
-  const front = [PRODUCTS.FR, PRODUCTS.FN, PRODUCTS.MB, PRODUCTS.PH]
+  // First-batch catalogue only (PE/FE/FN/MB/CI) — CN/FR/PD/PH keys were
+  // retired with the legacy fixtures; referencing them crashes the page.
+  const back = [PRODUCTS.CI, PRODUCTS.MB]
+  const front = [PRODUCTS.PE, PRODUCTS.FE, PRODUCTS.FN]
 
   return (
     <figure className="relative mx-auto w-full max-w-[560px]" aria-hidden="true">

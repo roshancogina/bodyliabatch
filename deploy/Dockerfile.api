@@ -1,0 +1,20 @@
+# Ubuntu 24.04 dry-run parity image for the Go API (go1.26 to match go.mod).
+# Standalone build: docker build -f deploy/Dockerfile.api -t batch-api:dryrun .
+FROM golang:1.26-bookworm AS build
+WORKDIR /api
+COPY backend-go/go.mod backend-go/go.sum ./
+RUN go mod download
+COPY backend-go/ ./
+RUN CGO_ENABLED=0 go build -trimpath -o /out/batch-api .
+
+FROM ubuntu:24.04 AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata curl \
+  && rm -rf /var/lib/apt/lists
+RUN useradd -r -u 10001 -m -s /usr/sbin/nologin app
+COPY --from=build /out/batch-api /usr/local/bin/batch-api
+COPY backend-go/migrations/ /migrations/
+USER app
+EXPOSE 8101
+ENV PORT=8101 GIN_MODE=release
+HEALTHCHECK --interval=15s --timeout=5s --retries=5 CMD curl -fsS http://127.0.0.1:8101/api/health || exit 1
+CMD ["/usr/local/bin/batch-api"]

@@ -35,13 +35,14 @@ export function BatchesPage({ user, focus, go }: { user: StaffUser; focus?: stri
     const n = q.trim().toUpperCase()
     const compact = n.replace(/[^A-Z0-9]/g, '')
     const val = (b: BatchRecord) => (sort.key === 'product' ? getProduct(b.product).name : b[sort.key])
+    const aliasCodes = (b: BatchRecord) => (b.aliases ?? []).map((a) => (typeof a === 'string' ? a : a.code))
     return batches
       .filter((b) => {
         if (!n) return true
-        // Canonical, alias (exact/substring), product name, or compact (punctuation-insensitive) match.
+        // Canonical, mapped manufacturer/label code (exact/substring), product name, or compact match.
         if (b.batch.includes(n)) return true
-        if ((b.aliases ?? []).some((a) => a.toUpperCase().includes(n))) return true
-        if (compact && (b.batch.replace(/[^A-Z0-9]/g, '').includes(compact) || (b.aliases ?? []).some((a) => a.replace(/[^A-Z0-9]/g, '').includes(compact)))) return true
+        if (aliasCodes(b).some((a) => a.toUpperCase().includes(n))) return true
+        if (compact && (b.batch.replace(/[^A-Z0-9]/g, '').includes(compact) || aliasCodes(b).some((a) => a.replace(/[^A-Z0-9]/g, '').includes(compact)))) return true
         return getProduct(b.product).name.toUpperCase().includes(n)
       })
       .filter((b) => {
@@ -61,7 +62,7 @@ export function BatchesPage({ user, focus, go }: { user: StaffUser; focus?: stri
   const exportCsv = () => {
     downloadCsv(`bodylia-batches-${new Date().toISOString().slice(0, 10)}.csv`, [
       ['batch', 'product', 'manufactured', 'expires', 'status', 'facility', 'lab', 'aliases'],
-      ...rows.map((b) => [b.batch, b.product, b.manufactured, b.expires, batchState(b), b.facility, b.lab, (b.aliases ?? []).join(' | ')]),
+      ...rows.map((b) => [b.batch, b.product, b.manufactured, b.expires, batchState(b), b.facility, b.lab, (b.aliases ?? []).map((a) => (typeof a === 'string' ? a : `${a.kind}:${a.code}`)).join(' | ')]),
     ])
     toast('Export downloaded', { description: `${rows.length} batches as CSV` })
   }
@@ -110,9 +111,9 @@ export function BatchesPage({ user, focus, go }: { user: StaffUser; focus?: stri
           <label htmlFor="batch-q" className="text-sm font-semibold">Search</label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-            <Input id="batch-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Batch, vendor code, or product" className="pl-9" />
+            <Input id="batch-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Batch, manufacturer/label code, or product" className="pl-9" />
           </div>
-          <p className="mt-1.5 text-xs text-muted">Tip: vendor-printed codes work too — e.g. FR-2509-312 finds BDL-FR-2509-0312.</p>
+          <p className="mt-1.5 text-xs text-muted">Tip: mapped codes work too — e.g. 2K26001 finds PE-2610-WL01.</p>
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="batch-status" className="text-sm font-semibold">Status</label>
@@ -167,7 +168,7 @@ export function BatchesPage({ user, focus, go }: { user: StaffUser; focus?: stri
                   </button>
                   {(b.aliases ?? []).length > 0 && (
                     <span className="tabular mt-0.5 block text-xs font-normal text-muted">
-                      also: {(b.aliases ?? []).slice(0, 3).join(', ')}{(b.aliases ?? []).length > 3 ? ` +${(b.aliases ?? []).length - 3} more` : ''}
+                      also: {(b.aliases ?? []).slice(0, 3).map((a) => (typeof a === 'string' ? a : a.code)).join(', ')}{(b.aliases ?? []).length > 3 ? ` +${(b.aliases ?? []).length - 3} more` : ''}
                     </span>
                   )}
                 </th>

@@ -14,11 +14,13 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 func (s *Store) getBatchRow(batch string) (*BatchRecord, error) {
 	rec := &BatchRecord{}
 	var recallReason, firstChecked, coaFile sql.NullString
+	var qty sql.NullInt64
+	var mrp sql.NullFloat64
 	err := s.db.QueryRow(`SELECT batch, product_code, manufactured::text, expires::text,
-		lab, facility, status, recall_reason, first_checked_at, coa_file_name
+		lab, facility, status, recall_reason, first_checked_at, coa_file_name, qty, mrp
 		FROM batches WHERE batch=$1`, batch).Scan(
 		&rec.Batch, &rec.Product, &rec.Manufactured, &rec.Expires,
-		&rec.Lab, &rec.Facility, &rec.Status, &recallReason, &firstChecked, &coaFile)
+		&rec.Lab, &rec.Facility, &rec.Status, &recallReason, &firstChecked, &coaFile, &qty, &mrp)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -33,6 +35,14 @@ func (s *Store) getBatchRow(batch string) (*BatchRecord, error) {
 	}
 	if coaFile.Valid {
 		rec.CoaFileName = &coaFile.String
+	}
+	if qty.Valid {
+		q := int(qty.Int64)
+		rec.Qty = &q
+	}
+	if mrp.Valid {
+		m := mrp.Float64
+		rec.Mrp = &m
 	}
 	_ = s.db.QueryRow(`SELECT name FROM products WHERE code=$1`, rec.Product).Scan(&rec.ProductName)
 	rows, err := s.db.Query(`SELECT test, specification, result, pass FROM coa_rows
@@ -56,16 +66,16 @@ func (s *Store) getBatchRow(batch string) (*BatchRecord, error) {
 	return rec, nil
 }
 
-func (s *Store) aliasesFor(batch string) ([]string, error) {
-	rows, err := s.db.Query(`SELECT alias FROM batch_aliases WHERE batch=$1 ORDER BY alias`, batch)
+func (s *Store) aliasesFor(batch string) ([]BatchAlias, error) {
+	rows, err := s.db.Query(`SELECT alias, kind FROM batch_aliases WHERE batch=$1 ORDER BY alias`, batch)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []string{}
+	out := []BatchAlias{}
 	for rows.Next() {
-		var a string
-		if err := rows.Scan(&a); err != nil {
+		var a BatchAlias
+		if err := rows.Scan(&a.Code, &a.Kind); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -73,46 +83,53 @@ func (s *Store) aliasesFor(batch string) ([]string, error) {
 	return out, rows.Err()
 }
 
-// ResolveBatch mirrors frontend resolveBatch(): exact canonical → exact alias → compact.
-func (s *Store) ResolveBatch(raw string) (*BatchRecord, *string, error) {
+// ResolveBatch mirrors frontend resolveBatch(): exact canonical → exact mapped alias → compact.
+// Returns the record, the matched alias code (nil for canonical), and the alias kind.
+func (s *Store) ResolveBatch(raw string) (*BatchRecord, *string, *string, error) {
 	norm := normaliseAlias(raw)
 	if norm == "" {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
-	if rec, err := s.getBatchRow(norm); err != nil || rec != nil {
-		return rec, nil, err
+	canon := normaliseBatch(raw)
+	if rec, err := s.getBatchRow(canon); err != nil || rec != nil {
+		return rec, nil, nil, err
 	}
-	var canonical, matched string
-	err := s.db.QueryRow(`SELECT batch, alias FROM batch_aliases WHERE alias=$1`, norm).Scan(&canonical, &matched)
+	if canon != norm {
+		if rec, err := s.getBatchRow(norm); err != nil || rec != nil {
+			return rec, nil, nil, err
+		}
+	}
+	var canonical, matched, kind string
+	err := s.db.QueryRow(`SELECT batch, alias, kind FROM batch_aliases WHERE alias=$1`, norm).Scan(&canonical, &matched, &kind)
 	if err == nil {
 		rec, err := s.getBatchRow(canonical)
 		if err != nil || rec == nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		m := normaliseAlias(matched)
-		return rec, &m, nil
+		return rec, &m, &kind, nil
 	}
 	if err != sql.ErrNoRows {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	compact := compactKey(norm)
 	var cbatch string
 	if err := s.db.QueryRow(`SELECT batch FROM batches
 		WHERE translate(upper(batch), '-_/. ', '')=$1`, compact).Scan(&cbatch); err == nil {
 		rec, err := s.getBatchRow(cbatch)
-		return rec, nil, err
+		return rec, nil, nil, err
 	}
-	var abatch, aalias string
-	if err := s.db.QueryRow(`SELECT batch, alias FROM batch_aliases WHERE compact_key=$1`,
-		compact).Scan(&abatch, &aalias); err == nil {
+	var abatch, aalias, akind string
+	if err := s.db.QueryRow(`SELECT batch, alias, kind FROM batch_aliases WHERE compact_key=$1`,
+		compact).Scan(&abatch, &aalias, &akind); err == nil {
 		rec, err := s.getBatchRow(abatch)
 		if err != nil || rec == nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		m := normaliseAlias(aalias)
-		return rec, &m, nil
+		return rec, &m, &akind, nil
 	}
-	return nil, nil, nil
+	return nil, nil, nil, nil
 }
 
 func (s *Store) markChecked(batch string, now time.Time) error {
@@ -134,6 +151,9 @@ func (s *Store) logLookup(input string, canonical, matched *string, verdict, ip 
 }
 
 func (s *Store) rateLimitPerMinute() int {
+	if ov := rateLimitOverride(); ov > 0 {
+		return ov
+	}
 	var n int
 	if err := s.db.QueryRow(`SELECT rate_limit_per_minute FROM settings WHERE id=1`).Scan(&n); err != nil {
 		return 10

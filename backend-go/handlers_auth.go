@@ -12,14 +12,20 @@ import (
 )
 
 // POST /api/auth/login → { token, user }
+// Login is an unauthenticated entry point, so it carries the same PoW
+// captcha as the public write endpoints (bots must burn CPU per attempt).
 
 func (a *App) handleLogin(c *gin.Context) {
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Captcha  string `json:"captchaToken"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(400, gin.H{"error": "Enter your work email and password."})
+		return
+	}
+	if !requireCaptcha(c, in.Captcha) {
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(in.Email))

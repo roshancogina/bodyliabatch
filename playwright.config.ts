@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'go run .',
-      cwd: '../backend-go',
+      cwd: './backend-go',
       url: 'http://localhost:8101/api/health',
       reuseExistingServer: true,
       timeout: 60_000,
@@ -31,6 +31,8 @@ export default defineConfig({
         DB_HOST: 'localhost',
         JWT_SECRET: 'test-secret-for-tdd-only',
         GIN_MODE: 'release',
+        // Test-only lookup-cap raise (backend ignores it outside APP_ENV=test).
+        RATE_LIMIT_PER_MINUTE: '120',
       },
     },
     {

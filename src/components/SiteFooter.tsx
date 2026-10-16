@@ -25,6 +25,17 @@ export function SiteFooter({ navigate }: { navigate: (p: PublicPage) => void }) 
           <p className="mt-4 text-sm text-ivory/85">
             Dietary supplements. Not for medicinal use. Not intended to diagnose, treat, cure or prevent any disease.
           </p>
+          <address className="mt-4 text-sm not-italic text-ivory/85">
+            B-208, Pavan Plaza, Opp Lifecare Hospital, Lakhudi Talav, Naranpura, Ahmedabad 380 013, India
+            <br />
+            <a href="tel:+919081900473" className="underline underline-offset-4 hover:decoration-2">
+              +91-9081900473
+            </a>{' '}
+            ·{' '}
+            <a href={`mailto:${email}`} className="underline underline-offset-4 hover:decoration-2">
+              {email}
+            </a>
+          </address>
         </div>
         <nav aria-label="Footer">
           <ul className="grid grid-cols-2 gap-x-8 text-sm sm:grid-cols-4 md:grid-cols-2">

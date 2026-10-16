@@ -65,6 +65,7 @@ func newRouter(db *sql.DB) *ginEngine {
 	bff := r.Group("/bff/v1")
 	{
 		bff.GET("/batches/:batch", app.handleLookup)
+		bff.GET("/captcha/challenge", app.handleCaptchaChallenge)
 		bff.POST("/reports", app.handleSubmitReport)
 		bff.POST("/reports/track", app.handleTrackReport)
 		bff.GET("/recalls", app.handleRecalls)

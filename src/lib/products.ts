@@ -10,7 +10,7 @@ export function getProduct(code: string): Product {
       name: `Unknown product (${code})`,
       claim: '',
       format: '',
-      image: PRODUCTS.FR.image,
+      image: PRODUCTS.PE.image,
       shelfLifeMonths: 24,
     }
   )

@@ -1,0 +1,105 @@
+name: batch-bodylia-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npx vitest run --coverage
+
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: bodyliabatch_test
+          POSTGRES_USER: bodylia
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U bodylia -d bodyliabatch_test"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      APP_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: bodylia
+      DB_PASSWORD: ci-test-only
+      DB_NAME: bodyliabatch_test
+      JWT_SECRET: ci-test-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: backend-go/go.sum
+      - run: go vet ./...
+        working-directory: backend-go
+      - run: go test ./... -count=1
+        working-directory: backend-go
+
+  e2e:
+    needs: [frontend, backend]
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: bodyliabatch_test
+          POSTGRES_USER: bodylia
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U bodylia -d bodyliabatch_test"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      APP_ENV: test
+      DB_HOST: localhost
+      DB_USER: bodylia
+      DB_PASSWORD: ci-test-only
+      DB_NAME: bodyliabatch_test
+      JWT_SECRET: ci-test-only
+      E2E_API_URL: http://127.0.0.1:8101
+      E2E_BASE_URL: http://127.0.0.1:5175
+      E2E_DB_USER: bodylia
+      E2E_ADMIN_EMAIL: admin@bodylia.in
+      E2E_ADMIN_PASSWORD: Bodylia@2026
+      VITE_API_URL: http://127.0.0.1:8101
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: backend-go/go.sum
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: DB=bodyliabatch_test sh scripts/db-reset.sh
+      - run: npx playwright test --reporter=list
+
+  images:
+    needs: [frontend, backend, e2e]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: docker build -f deploy/Dockerfile.web -t bodylia-batch-portal:${{ github.sha }} .
+      - run: docker build -f deploy/Dockerfile.api -t bodylia-batch-api:${{ github.sha }} .

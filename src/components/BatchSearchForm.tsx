@@ -1,17 +1,21 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronDown, Loader2, Search } from 'lucide-react'
 import { batchSearchSchema, type BatchSearchInput } from '../lib/schemas'
+import { describeCaptchaError } from '../lib/captcha'
 import { DEMO_BATCHES } from '../data/batches'
 import { SHOW_PREVIEW_HINTS } from '../lib/runtime-env'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { FormField } from './ui/form-field'
+import { CaptchaField } from './CaptchaField'
 import { WhereToFindDialog } from './WhereToFindDialog'
 
 export function BatchSearchForm({ onSearch, checking }: { onSearch: (batch: string) => void; checking: boolean }) {
   const [showDemo, setShowDemo] = React.useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaError, setCaptchaError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
@@ -23,14 +27,21 @@ export function BatchSearchForm({ onSearch, checking }: { onSearch: (batch: stri
     shouldFocusError: true,
   })
 
-  const submit = handleSubmit((data) => onSearch(data.batch))
+  const submit = handleSubmit((data) => {
+    setCaptchaError(null)
+    if (!captchaToken) {
+      setCaptchaError(describeCaptchaError('missing'))
+      return
+    }
+    onSearch(data.batch)
+  })
 
   return (
     <form onSubmit={submit} noValidate className="mt-8" aria-label="Verify a batch">
       <FormField
         id="batch"
         label="Batch number"
-        description="Printed near the expiry date — Bodylia code e.g. BDL-FR-2509-0312, or the vendor lot code on the pack"
+        description="Printed near the expiry date — UIBatch code e.g. PE-2610-WL01 (spaces are ignored), or a manufacturer code like 2K26001"
         error={errors.batch?.message}
       >
         {(a11y) => (
@@ -60,6 +71,19 @@ export function BatchSearchForm({ onSearch, checking }: { onSearch: (batch: stri
           </div>
         )}
       </FormField>
+
+      <CaptchaField
+        compact
+        onChange={(token) => {
+          setCaptchaToken(token)
+          if (token) setCaptchaError(null)
+        }}
+      />
+      {captchaError && (
+        <p role="alert" className="mt-3 text-sm font-medium text-error">
+          {captchaError}
+        </p>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
         <WhereToFindDialog />

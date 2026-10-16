@@ -92,7 +92,7 @@ export function CommandSearch({ open, onOpenChange, user, go }: { open: boolean;
             />
           </div>
           <ul id="cmd-results" role="listbox" aria-label="Results" className="max-h-96 overflow-y-auto p-2">
-            {hits.length === 0 && <li className="px-3 py-6 text-center text-graphite">No matches. Try a full batch number like BDL-FR-2509-0312.</li>}
+            {hits.length === 0 && <li className="px-3 py-6 text-center text-graphite">No matches. Try a full batch number like PE-2610-WL01.</li>}
             {hits.map((h, i) => {
               const Icon = icon[h.group]
               return (

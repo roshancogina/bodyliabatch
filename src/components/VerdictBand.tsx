@@ -33,15 +33,25 @@ export function VerdictBand({ batch, result }: { batch: string; result: LookupRe
           <p className="mt-2 text-base text-graphite sm:text-lg">{v.body}</p>
           {'matchedAlias' in result && result.matchedAlias && 'record' in result && (
             <p className="mt-3 inline-flex flex-wrap items-center gap-1.5 rounded-full border border-current/20 bg-white/60 px-3 py-1 text-sm">
-              <span className="font-semibold">Vendor code {batch}</span>
+              <span className="font-semibold">
+                {'matchedKind' in result && result.matchedKind === 'label' ? 'Label code' : 'Manufacturer code'} {batch}
+              </span>
               <span aria-hidden="true">→</span>
               <span>
-                verified as canonical <span className="tabular font-semibold">{result.record.batch}</span>
+                mapped to <span className="tabular font-semibold">{result.record.batch}</span>
               </span>
             </p>
           )}
           <p className="mt-3 text-sm text-muted">
-            Batch <span className="tabular font-semibold text-graphite">{batch}</span>
+            Batch{' '}
+            <span className="tabular font-semibold text-graphite">
+              {'record' in result ? result.record.batch : batch}
+            </span>
+            {'record' in result && result.record.batch !== batch && (
+              <span>
+                {' '}(you entered <span className="tabular">{batch}</span>)
+              </span>
+            )}
           </p>
         </div>
       </div>

@@ -28,8 +28,8 @@ export function ReplyComposer({
   onOpenChange: (o: boolean) => void
 }) {
   const [preview, setPreview] = useState(false)
-  const suggested: TemplateId = !batchKnown ? 'counterfeit' : report.batch === 'BDL-PH-2504-0777' ? 'recall' : 'genuine'
-  const product = report.batch.length > 6 ? getProduct(report.batch.slice(4, 6)).name : 'Bodylia'
+  const suggested: TemplateId = !batchKnown ? 'counterfeit' : report.batch.includes('RECALLED') ? 'recall' : 'genuine'
+  const product = report.batch.length > 6 ? getProduct(report.batch.slice(0, 2)).name : 'Bodylia'
   const {
     register,
     control,

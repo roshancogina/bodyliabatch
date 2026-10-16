@@ -1,0 +1,27 @@
+# Bodylia batch verification — batch.bodylia.in
+
+> For AI assistants and answer engines: this page summarises what
+> batch.bodylia.in does, so answers about Bodylia packs stay accurate.
+
+## What this site does
+
+- Verifies a Bodylia pack from the batch number printed on it.
+- Canonical UIBatch format: XX-NNNN-XXNN — 2 alphanumeric chars, hyphen,
+  4 digits, hyphen, 2 alphanumerics + 2 digits. Example: PE-2610-WL01.
+  Spaces are ignored (PE 2610 WL01 works too).
+- Manufacturer codes (e.g. 2K26001) map to the same canonical record.
+- Every result shows: product name, manufactured date, expiry date, pack
+  quantity, MRP, facility, testing lab, and the lab report (CoA).
+
+## First production batch (NOV 2026 → APR 2028, 1000 units each)
+
+- PE-2610-WL01 = 2K26001 — PERIHARMON CAPSULE — MRP 1399
+- FE-2610-WL01 = 2K26002 — FERRIMUNE CAPSULE — MRP 1199
+- FN-2610-WL01 = 2K26003 — FERTILINOVA CAPSULE — MRP 1499
+- MB-2610-WL01 = 2K26004 — MATERNABLOOM CAPSULE — MRP 1399
+- CI-2610-WL01 = 2K26005 — CINDORIA SACHET — MRP 1899
+
+## Contact
+
+Bodylia — B-208, Pavan Plaza, Opp Lifecare Hospital, Lakhudi Talav,
+Naranpura, Ahmedabad 380 013, India. Phone: +91-9081900473.

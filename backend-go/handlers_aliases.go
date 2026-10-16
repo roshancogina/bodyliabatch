@@ -9,7 +9,7 @@ import (
 func (a *App) handleAddAlias(c *gin.Context) {
 	u := currentUser(c)
 	canonical := normaliseBatch(c.Param("batch"))
-	rec, _, err := a.store.ResolveBatch(canonical)
+	rec, _, _, err := a.store.ResolveBatch(canonical)
 	if err != nil || rec == nil {
 		c.JSON(404, gin.H{"error": "Batch not found"})
 		return
@@ -45,7 +45,7 @@ func (a *App) handleAddAlias(c *gin.Context) {
 	}
 	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
 		VALUES ($1,'Added batch alias',$2,$3)`, u.Name, rec.Batch, n)
-	updated, _, _ := a.store.ResolveBatch(rec.Batch)
+	updated, _, _, _ := a.store.ResolveBatch(rec.Batch)
 	c.JSON(201, updated)
 }
 
@@ -53,7 +53,7 @@ func (a *App) handleRemoveAlias(c *gin.Context) {
 	u := currentUser(c)
 	canonical := normaliseBatch(c.Param("batch"))
 	alias := normaliseAlias(c.Param("alias"))
-	rec, _, err := a.store.ResolveBatch(canonical)
+	rec, _, _, err := a.store.ResolveBatch(canonical)
 	if err != nil || rec == nil {
 		c.JSON(404, gin.H{"error": "Batch not found"})
 		return
@@ -70,6 +70,6 @@ func (a *App) handleRemoveAlias(c *gin.Context) {
 	}
 	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
 		VALUES ($1,'Removed batch alias',$2,$3)`, u.Name, rec.Batch, alias)
-	updated, _, _ := a.store.ResolveBatch(rec.Batch)
+	updated, _, _, _ := a.store.ResolveBatch(rec.Batch)
 	c.JSON(200, updated)
 }

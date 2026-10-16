@@ -11,7 +11,7 @@ const FAQ: [string, string][] = [
   ],
   [
     'Where exactly is the batch number?',
-    'On bottles it’s printed on the base beside “EXP”. On sachet pouches it’s in the crimped strip on the back. On tubs it’s under the lid rim. It always starts with BDL-.',
+    'On bottles it’s printed on the base beside “EXP”. On sachet pouches it’s in the crimped strip on the back. On tubs it’s under the lid rim. It looks like PE-2610-WL01: 2 letters or digits, 4 digits, then 2 letters or digits plus 2 digits (spaces are ignored). Manufacturer codes like 2K26001 work too.',
   ],
   [
     'What does the lab report (Certificate of Analysis) prove?',

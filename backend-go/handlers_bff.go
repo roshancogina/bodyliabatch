@@ -20,7 +20,7 @@ func (a *App) handleLookup(c *gin.Context) {
 		c.JSON(404, gin.H{"kind": "not_found"})
 		return
 	}
-	rec, matched, err := a.store.ResolveBatch(raw)
+	rec, matched, kind, err := a.store.ResolveBatch(raw)
 	if err != nil {
 		c.JSON(500, gin.H{"kind": "error"})
 		return
@@ -42,6 +42,7 @@ func (a *App) handleLookup(c *gin.Context) {
 	}
 	out.Record = rec
 	out.MatchedAlias = matched
+	out.MatchedKind = kind
 	a.store.logLookup(raw, &rec.Batch, matched, out.Kind, ip)
 	c.JSON(200, out)
 }

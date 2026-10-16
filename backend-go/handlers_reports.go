@@ -8,6 +8,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GET /bff/v1/captcha/challenge → signed PoW challenge (salt + expiry + HMAC).
+// Public: bots must burn CPU per attempt; humans solve invisibly in the widget.
+
+func (a *App) handleCaptchaChallenge(c *gin.Context) {
+	c.JSON(200, newCaptchaChallenge(captchaSecret(), nowTime()))
+}
+
+// requireCaptcha aborts with 403 + plain-language error when the PoW token
+// is missing, expired, or forged. Test bypass needs APP_ENV=test + flag.
+func requireCaptcha(c *gin.Context, token string) bool {
+	if ok, reason := verifyCaptchaToken(captchaSecret(), token, nowTime()); !ok {
+		c.JSON(403, gin.H{"error": captchaErrorMessage(reason), "captcha": reason})
+		return false
+	}
+	return true
+}
+
 // POST /bff/v1/reports → 201 { reference }
 
 func (a *App) handleSubmitReport(c *gin.Context) {
@@ -19,9 +36,13 @@ func (a *App) handleSubmitReport(c *gin.Context) {
 		Channel  string `json:"channel"`
 		Message  string `json:"message"`
 		Consent  bool   `json:"consent"`
+		Captcha  string `json:"captchaToken"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(400, gin.H{"error": "Invalid request body"})
+		return
+	}
+	if !requireCaptcha(c, in.Captcha) {
 		return
 	}
 	in.FullName = strings.TrimSpace(in.FullName)
@@ -47,7 +68,7 @@ func (a *App) handleSubmitReport(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Confirm we may contact you about this report."})
 		return
 	}
-	rec, _, _ := a.store.ResolveBatch(in.Batch)
+	rec, _, _, _ := a.store.ResolveBatch(in.Batch)
 	var canonical sql.NullString
 	if rec != nil {
 		canonical = sql.NullString{String: rec.Batch, Valid: true}
@@ -106,9 +127,16 @@ func (a *App) handleTrackReport(c *gin.Context) {
 	var in struct {
 		Reference string `json:"reference"`
 		Email     string `json:"email"`
+		Captcha   string `json:"captchaToken"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(200, gin.H{"found": false})
+		return
+	}
+	// Track needs a human check too (blocks reference-enumeration bots),
+	// but stays silent on failure to avoid leaking whether a reference exists.
+	if ok, _ := verifyCaptchaToken(captchaSecret(), in.Captcha, nowTime()); !ok {
+		c.JSON(403, gin.H{"error": captchaErrorMessage("invalid"), "captcha": "invalid", "found": false})
 		return
 	}
 	rep, err := a.getReport(strings.ToUpper(strings.TrimSpace(in.Reference)))

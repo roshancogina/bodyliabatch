@@ -5,11 +5,13 @@ import { format } from 'date-fns'
 import { Loader2, Lock } from 'lucide-react'
 import { signInSchema, type SignInInput } from '../schemas'
 import { AuthError, PREVIEW_PASSWORD, PREVIEW_TOTP, signIn } from '../../lib/auth'
+import { describeCaptchaError } from '../../lib/captcha'
 import { PREVIEW_AUTH_ENABLED } from '../../lib/runtime-env'
 import { ROLE_LABEL } from '../../data/admin-seed'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { FormField } from '../../components/ui/form-field'
+import { CaptchaField } from '../../components/CaptchaField'
 import { AuthLayout } from './AuthLayout'
 import { PasswordField } from './PasswordField'
 import type { AccessStep } from '../AdminApp'
@@ -22,6 +24,8 @@ const PREVIEW_ACCOUNTS = [
 
 export function SignIn({ go, onExit, className }: { go: (s: AccessStep) => void; onExit?: () => void; className?: string }) {
   const [error, setError] = useState<{ text: string; lockedUntil?: number } | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaError, setCaptchaError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
@@ -31,6 +35,11 @@ export function SignIn({ go, onExit, className }: { go: (s: AccessStep) => void;
 
   const submit = handleSubmit(async ({ email, password }) => {
     setError(null)
+    setCaptchaError(null)
+    if (!captchaToken) {
+      setCaptchaError(describeCaptchaError('missing'))
+      return
+    }
     try {
       const user = await signIn(email, password)
       go({ step: 'twostep', user })
@@ -70,6 +79,17 @@ export function SignIn({ go, onExit, className }: { go: (s: AccessStep) => void;
         <FormField id="password" label="Password" error={errors.password?.message}>
           {(a) => <PasswordField {...a} {...register('password')} autoComplete="current-password" />}
         </FormField>
+        <CaptchaField
+          onChange={(token) => {
+            setCaptchaToken(token)
+            if (token) setCaptchaError(null)
+          }}
+        />
+        {captchaError && (
+          <p role="alert" className="-mt-2 text-sm font-medium text-error">
+            {captchaError}
+          </p>
+        )}
         <div className="-mt-2 flex justify-end">
           <button type="button" onClick={() => go({ step: 'forgot' })} className="inline-flex min-h-11 items-center text-sm font-semibold text-burgundy underline underline-offset-4 hover:decoration-2">
             Forgot password?

@@ -2,17 +2,17 @@ import { z } from 'zod'
 import { canonicalBatchError, normaliseAlias, normaliseBatch, stripSpaces } from './utils'
 
 /**
- * UIBatch canonical standard: XX-NNNN-NNNN (spaces stripped/ignored).
- *   XX   — 2 uppercase letters, e.g. FR
- *   NNNN — 4 digits, e.g. 2509
- *   NNNN — 4 digits, e.g. 0312
- * Full example: FR-2509-0312.
+ * UIBatch canonical standard: XX-NNNN-XXNN (spaces stripped/ignored).
+ *   XX   — 2 alphanumeric chars (A–Z, 0–9), e.g. PE
+ *   NNNN — 4 digits, e.g. 2610
+ *   XXNN — 2 alphanumeric chars + 2 digits, e.g. WL01
+ * Full example: PE-2610-WL01.
  *
  * Manufacturer batch codes and label batch codes are stored as `aliases`
  * (see data/batches.ts) and resolved by the BFF — entering ANY mapped code
  * returns the same product details.
  */
-export const BATCH_PATTERN = /^[A-Z]{2}-\d{4}-\d{4}$/
+export const BATCH_PATTERN = /^[A-Z0-9]{2}-\d{4}-[A-Z0-9]{2}\d{2}$/
 
 /** Alias kinds an admin can attach to a canonical UIBatch code. */
 export const ALIAS_KINDS = ['manufacturer', 'label'] as const
@@ -45,7 +45,7 @@ export const batchLookupSchema = z
 export const canonicalBatchInputSchema = z
   .string()
   .transform((v) => stripSpaces(v))
-  .refine((v) => v.length === 10 || v.length === 12, 'Batch numbers are 10 characters plus hyphens, like FR-2509-0312 (spaces are ignored).')
+  .refine((v) => v.length === 10 || v.length === 12, 'Batch numbers are 10 characters plus hyphens, like PE-2610-WL01 (spaces are ignored).')
 
 /** Alias schema — for admin alias entry (per-alias, already split). */
 export const batchAliasSchema = z

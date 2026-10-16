@@ -29,6 +29,8 @@ export function BatchFacts({ record, product, kind, onReport }: Props) {
     ['Manufactured', fmt(record.manufactured)],
     ['Expires', fmt(record.expires)],
     ['Shelf life left', kind === 'expired' ? 'None — expired' : monthsLeft < 1 ? 'Less than a month' : `${monthsLeft} months`],
+    ...(record.qty != null ? [['Pack quantity', String(record.qty)] as [string, React.ReactNode]] : []),
+    ...(record.mrp != null ? [['MRP', `₹${record.mrp.toLocaleString('en-IN')}`] as [string, React.ReactNode]] : []),
     ['Made at', record.facility],
     ['Tested by', record.lab],
   ]

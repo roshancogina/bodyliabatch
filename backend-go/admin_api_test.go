@@ -12,7 +12,7 @@ import (
 func adminToken(t *testing.T, r *ginEngine) string {
 	t.Helper()
 	w := doReq(t, r, "POST", "/api/auth/login",
-		map[string]any{"email": "admin@bodylia.in", "password": "Bodylia@2026"}, "")
+		withCaptcha(map[string]any{"email": "admin@bodylia.in", "password": "Bodylia@2026"}, solveTestCaptcha(t, fetchChallenge(t, r))), "")
 	if w.Code != 200 {
 		t.Fatalf("login = %d: %s", w.Code, w.Body.String())
 	}
@@ -41,7 +41,7 @@ func TestAdminLoginAndMe(t *testing.T) {
 func TestAdminBatchesSearchByAlias(t *testing.T) {
 	r := testRouter(t)
 	tok := adminToken(t, r)
-	w := doReq(t, r, "GET", "/api/admin/batches?q=VND-CN", nil, tok)
+	w := doReq(t, r, "GET", "/api/admin/batches?q=2K26005", nil, tok)
 	if w.Code != 200 {
 		t.Fatalf("admin search = %d: %s", w.Code, w.Body.String())
 	}
@@ -49,32 +49,32 @@ func TestAdminBatchesSearchByAlias(t *testing.T) {
 	decodeBody(t, w, &out)
 	found := false
 	for _, item := range out {
-		if m, ok := item.(map[string]any); ok && m["batch"] == "BDL-CN-2510-1180" {
+		if m, ok := item.(map[string]any); ok && m["batch"] == "CI-2610-WL01" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("alias search missed BDL-CN-2510-1180: %s", w.Body.String())
+		t.Fatalf("alias search missed CI-2610-WL01: %s", w.Body.String())
 	}
 }
 
 func TestAdminRegisterBatchWithAliases(t *testing.T) {
 	r := testRouter(t)
 	tok := adminToken(t, r)
-	batch := fmt.Sprintf("BDL-FR-2601-%04d", 1000+os.Getpid()%9000)
+	batch := fmt.Sprintf("PE-2601-WL%02d", os.Getpid()%100)
 	payload := map[string]any{
-		"batch": batch, "product": "FR",
+		"batch": batch, "product": "PE",
 		"manufactured": "2026-01-05", "expires": "2028-01-04",
 		"facility": "Unit 2, Baddi, Himachal Pradesh",
 		"lab":      "Eurofins Analytical Services India, Bengaluru",
-		"aliases":  []string{"TDD-VND-001"},
+		"aliases":  []string{"TDD-MFG-001"},
 		"coa":      []any{map[string]any{"test": "Assay (active)", "specification": "18 mg ± 10 %", "result": "18.1 mg", "pass": true}},
 	}
 	w := doReq(t, r, "POST", "/api/admin/batches", payload, tok)
 	if w.Code != 201 {
 		t.Fatalf("register = %d: %s", w.Code, w.Body.String())
 	}
-	w2 := doReq(t, r, "GET", "/bff/v1/batches/TDD-VND-001", nil, "")
+	w2 := doReq(t, r, "GET", "/bff/v1/batches/TDD-MFG-001", nil, "")
 	var out map[string]any
 	decodeBody(t, w2, &out)
 	if out["kind"] != "genuine" {

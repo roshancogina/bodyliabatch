@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 )
@@ -66,7 +67,7 @@ func TestPublicHealth(t *testing.T) {
 
 func TestPublicLookupCanonicalGenuine(t *testing.T) {
 	r := testRouter(t)
-	w := doReq(t, r, "GET", "/bff/v1/batches/BDL-FR-2509-0312", nil, "")
+	w := doReq(t, r, "GET", "/bff/v1/batches/PE-2610-WL01", nil, "")
 	if w.Code != 200 {
 		t.Fatalf("lookup = %d: %s", w.Code, w.Body.String())
 	}
@@ -76,15 +77,16 @@ func TestPublicLookupCanonicalGenuine(t *testing.T) {
 		t.Fatalf("kind = %v, want genuine", out)
 	}
 	rec := out["record"].(map[string]any)
-	if rec["batch"] != "BDL-FR-2509-0312" {
+	if rec["batch"] != "PE-2610-WL01" {
 		t.Fatalf("record.batch = %v", rec["batch"])
 	}
 }
 
 func TestPublicLookupAliasResolves(t *testing.T) {
 	r := testRouter(t)
-	for _, alias := range []string{"FR-2509-312", "fr25090312", "VND-FR-0312"} {
-		w := doReq(t, r, "GET", "/bff/v1/batches/"+alias, nil, "")
+	for _, alias := range []string{"2K26001", "2k26001", " 2K26001 "} {
+		// httptest.NewRequest panics on raw spaces — escape like a real client.
+		w := doReq(t, r, "GET", "/bff/v1/batches/"+url.PathEscape(alias), nil, "")
 		if w.Code != 200 {
 			t.Fatalf("alias %s = %d: %s", alias, w.Code, w.Body.String())
 		}
@@ -94,7 +96,7 @@ func TestPublicLookupAliasResolves(t *testing.T) {
 			t.Fatalf("alias %s kind = %v", alias, out)
 		}
 		rec := out["record"].(map[string]any)
-		if rec["batch"] != "BDL-FR-2509-0312" {
+		if rec["batch"] != "PE-2610-WL01" {
 			t.Fatalf("alias %s record.batch = %v", alias, rec["batch"])
 		}
 		if out["matchedAlias"] == nil || out["matchedAlias"] == "" {
@@ -105,18 +107,18 @@ func TestPublicLookupAliasResolves(t *testing.T) {
 
 func TestPublicLookupExpiredRecalledNotFound(t *testing.T) {
 	r := testRouter(t)
-	w := doReq(t, r, "GET", "/bff/v1/batches/BDL-MB-2203-0045", nil, "")
+	w := doReq(t, r, "GET", "/bff/v1/batches/MB-2203-MB45", nil, "")
 	var out map[string]any
 	decodeBody(t, w, &out)
 	if out["kind"] != "expired" {
 		t.Fatalf("expired kind = %v", out)
 	}
-	w = doReq(t, r, "GET", "/bff/v1/batches/BDL-PH-2504-0777", nil, "")
+	w = doReq(t, r, "GET", "/bff/v1/batches/PH-2504-PH77", nil, "")
 	decodeBody(t, w, &out)
 	if out["kind"] != "recalled" {
 		t.Fatalf("recalled kind = %v", out)
 	}
-	w = doReq(t, r, "GET", "/bff/v1/batches/BDL-FN-2501-0001", nil, "")
+	w = doReq(t, r, "GET", "/bff/v1/batches/ZZ-9999-ZZ99", nil, "")
 	if w.Code != 404 {
 		t.Fatalf("not-found = %d, want 404", w.Code)
 	}
@@ -124,12 +126,14 @@ func TestPublicLookupExpiredRecalledNotFound(t *testing.T) {
 
 func TestPublicSubmitAndTrackReport(t *testing.T) {
 	r := testRouter(t)
-	w := doReq(t, r, "POST", "/bff/v1/reports", map[string]any{
+	ch := fetchChallenge(t, r)
+	tok := solveTestCaptcha(t, ch)
+	w := doReq(t, r, "POST", "/bff/v1/reports", withCaptcha(map[string]any{
 		"fullName": "TDD User", "email": "tdd@example.com",
-		"batch": "FR-2509-312", "channel": "Amazon",
+		"batch": "2K26001", "channel": "Amazon",
 		"message": "This is a TDD report with at least twenty characters.",
 		"consent": true,
-	}, "")
+	}, tok), "")
 	if w.Code != 201 {
 		t.Fatalf("submit = %d: %s", w.Code, w.Body.String())
 	}
@@ -139,8 +143,9 @@ func TestPublicSubmitAndTrackReport(t *testing.T) {
 	if len(ref) < 10 {
 		t.Fatalf("reference = %v", created)
 	}
+	ch2 := fetchChallenge(t, r)
 	w = doReq(t, r, "POST", "/bff/v1/reports/track",
-		map[string]any{"reference": ref, "email": "tdd@example.com"}, "")
+		withCaptcha(map[string]any{"reference": ref, "email": "tdd@example.com"}, solveTestCaptcha(t, ch2)), "")
 	if w.Code != 200 {
 		t.Fatalf("track = %d: %s", w.Code, w.Body.String())
 	}
@@ -150,7 +155,7 @@ func TestPublicSubmitAndTrackReport(t *testing.T) {
 		t.Fatalf("track found = %v", tracked)
 	}
 	w = doReq(t, r, "POST", "/bff/v1/reports/track",
-		map[string]any{"reference": ref, "email": "stranger@example.com"}, "")
+		withCaptcha(map[string]any{"reference": ref, "email": "stranger@example.com"}, solveTestCaptcha(t, fetchChallenge(t, r))), "")
 	var denied map[string]any
 	decodeBody(t, w, &denied)
 	if denied["found"] != false {

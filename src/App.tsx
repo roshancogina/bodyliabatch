@@ -138,7 +138,7 @@ export function App() {
         {view.name === 'recalls' && <ActiveRecalls onCheck={runLookup} />}
         {view.name === 'faq' && <FaqPage navigate={navigate} />}
         {(view.name === 'accessibility' || view.name === 'privacy' || view.name === 'terms') && <LegalPage page={view.name} />}
-        {view.name === 'notfound' && <NotFoundPage onSearch={runLookup} checking={checking} />}
+        {view.name === 'notfound' && <NotFoundPage onSearch={runLookup} checking={checking} navigate={navigate} />}
       </main>
       <SiteFooter navigate={navigate} />
       <Toaster />

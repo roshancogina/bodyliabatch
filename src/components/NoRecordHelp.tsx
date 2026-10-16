@@ -22,7 +22,7 @@ export function NoRecordHelp({
           <ul className="mt-4 flex flex-col divide-y divide-mist border-y border-mist">
             {[
               ['Zero, not the letter O', 'Batch numbers never contain the letters O or I.'],
-              ['Bodylia or vendor code?', 'Bodylia codes look like BDL-FR-2509-0312. Vendor lot codes (e.g. FR-2509-312) work too — enter exactly what is printed.'],
+              ['UIBatch or mapped code?', 'UIBatch codes look like PE-2610-WL01 (spaces are ignored). Manufacturer codes like 2K26001 work too when mapped — enter exactly what is printed.'],
               ['Use the batch, not the barcode', 'The barcode digits are the same on every pack — the batch number isn’t.'],
             ].map(([t, d]) => (
               <li key={t} className="py-4">

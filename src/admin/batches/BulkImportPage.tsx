@@ -14,10 +14,9 @@ import type { Go } from '../AdminShell'
 const HEADER = ['batch', 'product', 'manufactured', 'expires', 'facility', 'lab']
 const OPTIONAL_HEADER = ['aliases']
 const SAMPLE = `batch,product,manufactured,expires,facility,lab,aliases
-BDL-FN-2601-0042,FN,2026-01-05,2028-01-04,"Unit 2, Baddi, Himachal Pradesh","Eurofins Analytical Services India, Bengaluru","FN-2601-42 | VND-FN-0042"
-BDL-PD-2601-0007,PD,2026-01-08,2027-01-07,"Unit 1, Baddi, Himachal Pradesh","TÜV SÜD South Asia, Chennai",
-BDL-MB-2601-0019,FR,2026-01-09,2028-01-08,"Unit 2, Baddi, Himachal Pradesh","Eurofins Analytical Services India, Bengaluru",
-BDL-FR-2509-0312,FR,2025-09-14,2027-09-13,"Unit 2, Baddi, Himachal Pradesh","Eurofins Analytical Services India, Bengaluru","FR-2509-312 | VND-FR-0312"`
+PE-2610-WL01,PE,2026-11-01,2028-04-30,"Unit 2, Baddi, Himachal Pradesh","Eurofins Analytical Services India, Bengaluru","2K26001"
+FE-2610-WL01,FE,2026-11-01,2028-04-30,"Unit 1, Baddi, Himachal Pradesh","Eurofins Analytical Services India, Bengaluru","2K26002"
+MB-2610-WL01,MB,2026-11-01,2028-04-30,"Unit 2, Baddi, Himachal Pradesh","Eurofins Analytical Services India, Bengaluru","2K26004"`
 
 interface Row {
   line: number
@@ -52,7 +51,7 @@ export function BulkImportPage({ user, go }: { user: StaffUser; go: Go }) {
     const existingAliases = new Map<string, string>()
     for (const b of batches) {
       existingAliases.set(b.batch, b.batch)
-      for (const a of b.aliases ?? []) existingAliases.set(a, b.batch)
+      for (const a of b.aliases ?? []) existingAliases.set(typeof a === 'string' ? a : a.code, b.batch)
     }
     setRows(
       lines.slice(1).map((cells, i) => {
@@ -165,7 +164,7 @@ export function BulkImportPage({ user, go }: { user: StaffUser; go: Go }) {
             <Button
               variant="outline"
               className="mt-4"
-              onClick={() => downloadCsv('bodylia-batch-import-template.csv', [HEADER, ['BDL-FR-2601-0001', 'FR', '2026-01-15', '2028-01-14', facilities[0]?.name ?? '', labs[0]?.name ?? '']])}
+              onClick={() => downloadCsv('bodylia-batch-import-template.csv', [HEADER, ['FR-2601-0001', 'FR', '2026-01-15', '2028-01-14', facilities[0]?.name ?? '', labs[0]?.name ?? '']])}
             >
               <Download aria-hidden="true" />
               Download template

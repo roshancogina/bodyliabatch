@@ -67,3 +67,22 @@ func TestIsolationProdWriteGuard(t *testing.T) {
 		t.Fatalf("guardProdWrite must allow in test: %v", err)
 	}
 }
+
+// TDD: test-only rate-limit override (Playwright fires ~20 lookups/min).
+// Production must ignore RATE_LIMIT_PER_MINUTE (isTest false there).
+func TestRateLimitOverrideTestOnly(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("RATE_LIMIT_PER_MINUTE", "120")
+	if got := rateLimitOverride(); got != 120 {
+		t.Fatalf("override in test = %d, want 120", got)
+	}
+	t.Setenv("RATE_LIMIT_PER_MINUTE", "bogus")
+	if got := rateLimitOverride(); got != 0 {
+		t.Fatalf("invalid override = %d, want 0 (fall back to DB)", got)
+	}
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("RATE_LIMIT_PER_MINUTE", "9999")
+	if got := rateLimitOverride(); got != 0 {
+		t.Fatalf("override in production = %d, want 0 (DB value must stand)", got)
+	}
+}

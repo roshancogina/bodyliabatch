@@ -1,10 +1,10 @@
 /**
- * Hash routing. Every in-app link is a fragment (#/track, #/?b=BDL-…), so a click,
+ * Hash routing. Every in-app link is a fragment (#/track, #/?b=PE-2610-WL01), so a click,
  * middle-click, refresh or open-in-new-tab never asks the server for a path it doesn't
  * serve — no "Cannot GET /" in the preview or behind a static host.
  *
  * Production deep links from pack QR codes keep the query form
- * (batch.bodylia.in/?b=BDL-…) and are read here too.
+ * (batch.bodylia.in/?b=PE-2610-WL01) and are read here too.
  */
 export interface Route {
   p: string | null

@@ -13,6 +13,11 @@ import { AuthLayout } from './AuthLayout'
 import type { AccessStep } from '../AdminApp'
 
 export function TwoStep({ user, go, className }: { user: StaffUser; go: (s: AccessStep) => void; className?: string }) {
+  // No CaptchaField here BY DESIGN: this step is only reachable after the
+  // captcha-gated SignIn (AdminApp access flow: signin → twostep), and the
+  // 6-digit TOTP/recovery check is itself a human-rate-limited challenge
+  // (5 attempts → 15-minute lock, server-side). See AGENTS.md §4 + harness
+  // captcha skill for the unauthenticated-forms-only policy.
   const [recovery, setRecovery] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const {

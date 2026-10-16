@@ -21,6 +21,10 @@ const RECOVERY: string[] = (() => {
 })()
 
 export function SetupTwoStep({ user, go, className }: { user: StaffUser; go: (s: AccessStep) => void; className?: string }) {
+  // No CaptchaField here BY DESIGN: this step is only reachable after the
+  // captcha-gated NewPasswordForm (invite/reset links), and the 6-digit
+  // authenticator check is itself a human-rate-limited challenge. See
+  // AGENTS.md §4 + harness captcha skill for the unauthenticated-forms-only policy.
   const [phase, setPhase] = useState<'scan' | 'codes'>('scan')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)

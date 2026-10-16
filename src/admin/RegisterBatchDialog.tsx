@@ -55,25 +55,25 @@ export function RegisterBatchDialog({
       setError('batch', { message: 'This batch number is already registered.' })
       return
     }
-    // Aliases must be globally unique (no clash with another canonical or alias).
+    // Mapped codes must be globally unique (no clash with another canonical or mapped code).
     const taken = new Map<string, string>()
     for (const b of existing) {
       taken.set(b.batch, b.batch)
-      for (const a of b.aliases ?? []) taken.set(a, b.batch)
+      for (const a of b.aliases ?? []) taken.set(typeof a === 'string' ? a : a.code, b.batch)
     }
     const clash = v.aliases.find((a) => taken.has(a))
     if (clash) {
-      setError('aliases', { message: `"${clash}" is already used by ${taken.get(clash)}. Use a different vendor code.` })
+      setError('aliases', { message: `"${clash}" is already used by ${taken.get(clash)}. Use a different manufacturer or label code.` })
       return
     }
     store.set((s) => ({
       batches: [
-        { batch: v.batch, product: v.product, manufactured: v.manufactured, expires: v.expires, facility: v.facility, lab: v.lab, status: 'released', coa: v.coa as CoaRow[], coaFileName: coaFile?.name, aliases: v.aliases },
+        { batch: v.batch, product: v.product, manufactured: v.manufactured, expires: v.expires, facility: v.facility, lab: v.lab, status: 'released', coa: v.coa as CoaRow[], coaFileName: coaFile?.name, aliases: v.aliases.map((code) => ({ code, kind: 'manufacturer' as const })) },
         ...s.batches,
       ],
     }))
-    store.audit(user.name, 'Registered batch', v.batch, v.aliases.length ? `aliases: ${v.aliases.join(', ')}` : undefined)
-    toast(`${v.batch} registered`, { description: v.aliases.length ? `Customers can verify it via ${v.aliases.length} vendor code${v.aliases.length === 1 ? '' : 's'} too.` : 'Customers can verify it now.' })
+    store.audit(user.name, 'Registered batch', v.batch, v.aliases.length ? `mapped codes: ${v.aliases.join(', ')}` : undefined)
+    toast(`${v.batch} registered`, { description: v.aliases.length ? `Customers can verify it via ${v.aliases.length} mapped code${v.aliases.length === 1 ? '' : 's'} too.` : 'Customers can verify it now.' })
     setCoaFile(null)
     reset()
     onOpenChange(false)
@@ -90,7 +90,7 @@ export function RegisterBatchDialog({
       <DialogContent title="Register a batch" description="Only register batches that have passed release testing. Customers can check it as soon as you save." className="max-w-3xl">
         <form onSubmit={submit} noValidate className="flex flex-col gap-6">
           <div className="grid gap-5 sm:grid-cols-2">
-            <FormField id="rb-batch" label="Batch number" description="e.g. BDL-FN-2601-0042" error={errors.batch?.message}>
+            <FormField id="rb-batch" label="Batch number" description="XX-NNNN-XXNN, e.g. PE-2610-WL01 (spaces are ignored)" error={errors.batch?.message}>
               {(a) => <Input {...a} {...register('batch')} autoCapitalize="characters" spellCheck={false} className="tabular font-semibold tracking-wide" />}
             </FormField>
             <FormField id="rb-product" label="Product" description="Must match the code in the batch number." error={errors.product?.message}>
@@ -103,8 +103,8 @@ export function RegisterBatchDialog({
                 </NativeSelect>
               )}
             </FormField>
-            <FormField id="rb-aliases" label="Vendor aliases" optional description="Other lot codes printed by vendors, one per line or comma-separated. Customers can verify with any of these. e.g. FR-2509-312, VND-FR-0312" error={errors.aliases?.message as string | undefined}>
-              {(a) => <Textarea {...a} {...register('aliases')} autoCapitalize="characters" spellCheck={false} className="tabular min-h-20 font-semibold tracking-wide" placeholder="FR-2509-312, VND-FR-0312" />}
+            <FormField id="rb-aliases" label="Mapped batch codes" optional description="Manufacturer or label codes for this batch, one per line or comma-separated. Entering any mapped code returns the same product details. e.g. 2K26001" error={errors.aliases?.message as string | undefined}>
+              {(a) => <Textarea {...a} {...register('aliases')} autoCapitalize="characters" spellCheck={false} className="tabular min-h-20 font-semibold tracking-wide" placeholder="2K26001" />}
             </FormField>
             <FormField id="rb-mfg" label="Manufactured on" error={errors.manufactured?.message}>
               {(a) => <Input {...a} {...register('manufactured')} type="date" />}

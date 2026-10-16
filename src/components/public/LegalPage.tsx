@@ -25,6 +25,15 @@ export function LegalPage({ page }: { page: Page }) {
           )}
         </section>
       ))}
+      {page === 'accessibility' && (
+        <section className="mt-10">
+          <h2 className="font-serif text-2xl font-semibold text-burgundy">Human checks without puzzles</h2>
+          <p className="mt-3 leading-7 text-graphite">
+            Every form carries an automatic human check that runs on your own device — there is nothing to
+            solve and no distorted text. Staff sign-in allows password managers and pasting.
+          </p>
+        </section>
+      )}
     </div>
   )
 }

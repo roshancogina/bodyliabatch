@@ -6,17 +6,21 @@ import { format } from 'date-fns'
 import { Check, Loader2, SearchX } from 'lucide-react'
 import type { PublicPage } from '../../App'
 import { trackSchema, type TrackInput } from '../../lib/schemas'
-import { trackReport, type TrackResult } from '../../lib/bff'
+import { CaptchaError, trackReport, type TrackResult } from '../../lib/bff'
+import { describeCaptchaError } from '../../lib/captcha'
 import { useStore } from '../../lib/store'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { FormField } from '../ui/form-field'
+import { CaptchaField } from '../CaptchaField'
 
 const STEPS = ['Received', 'Investigating', 'Resolved'] as const
 
 export function TrackReport({ prefill, navigate }: { prefill?: string; navigate: (p: PublicPage) => void }) {
   const [result, setResult] = useState<TrackResult | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaError, setCaptchaError] = useState<string | null>(null)
   const email = useStore((s) => s.settings.supportEmail)
   const {
     register,
@@ -24,7 +28,23 @@ export function TrackReport({ prefill, navigate }: { prefill?: string; navigate:
     formState: { errors, isSubmitting },
   } = useForm<TrackInput>({ resolver: zodResolver(trackSchema), defaultValues: { reference: prefill ?? '', email: '' } })
 
-  const submit = handleSubmit(async (v) => setResult(await trackReport(v.reference, v.email)))
+  const submit = handleSubmit(async (v) => {
+    setCaptchaError(null)
+    setResult(null)
+    if (!captchaToken) {
+      setCaptchaError(describeCaptchaError('missing'))
+      return
+    }
+    try {
+      setResult(await trackReport(v.reference, v.email, captchaToken))
+    } catch (e) {
+      if (e instanceof CaptchaError) {
+        setCaptchaError(describeCaptchaError(e.reason))
+        return
+      }
+      throw e
+    }
+  })
 
   return (
     <div className="mx-auto grid max-w-6xl gap-12 px-5 pb-20 pt-10 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:pt-16">
@@ -42,6 +62,17 @@ export function TrackReport({ prefill, navigate }: { prefill?: string; navigate:
           <FormField id="tr-email" label="Email address" error={errors.email?.message}>
             {(a) => <Input {...a} {...register('email')} type="email" autoComplete="email" />}
           </FormField>
+          <CaptchaField
+            onChange={(token) => {
+              setCaptchaToken(token)
+              if (token) setCaptchaError(null)
+            }}
+          />
+          {captchaError && (
+            <p role="alert" className="text-sm font-medium text-error">
+              {captchaError}
+            </p>
+          )}
           <Button type="submit" size="lg" disabled={isSubmitting} className="self-start">
             {isSubmitting && <Loader2 className="animate-spin" aria-hidden="true" />}
             {isSubmitting ? 'Finding your report…' : 'Show status'}

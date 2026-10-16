@@ -3,16 +3,20 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link2, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { feedbackSchema } from '../../lib/schemas'
+import { describeCaptchaError } from '../../lib/captcha'
 import { store } from '../../lib/store'
 import { toast } from '../../lib/toast'
 import { Button } from '../ui/button'
 import { Textarea } from '../ui/input'
 import { FormField } from '../ui/form-field'
+import { CaptchaField } from '../CaptchaField'
 
 /** Share link + "Was this helpful?" — shown under every verdict. */
 export function ShareFeedback({ batch }: { batch: string }) {
   const [answer, setAnswer] = useState<null | boolean>(null)
   const [sent, setSent] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaError, setCaptchaError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
@@ -65,6 +69,11 @@ export function ShareFeedback({ batch }: { batch: string }) {
           <form
             noValidate
             onSubmit={handleSubmit(({ comment }) => {
+              if (!captchaToken) {
+                setCaptchaError(describeCaptchaError('missing'))
+                return
+              }
+              setCaptchaError(null)
               record(false, comment)
               setSent(true)
             })}
@@ -73,6 +82,18 @@ export function ShareFeedback({ batch }: { batch: string }) {
             <FormField id="fb-comment" label="What could be better?" optional description={`${len}/500 characters. Please don’t include personal details.`} error={errors.comment?.message}>
               {(a) => <Textarea {...a} {...register('comment')} className="min-h-24" />}
             </FormField>
+            <CaptchaField
+              compact
+              onChange={(token) => {
+                setCaptchaToken(token)
+                if (token) setCaptchaError(null)
+              }}
+            />
+            {captchaError && (
+              <p role="alert" className="text-sm font-medium text-error">
+                {captchaError}
+              </p>
+            )}
             <Button type="submit" className="self-start">Send feedback</Button>
           </form>
         )}

@@ -36,7 +36,7 @@ export function ProductDialog({ user, editing, onClose }: { user: StaffUser; edi
     const p: Product = { code: v.code.toUpperCase(), name: v.name, claim: v.claim, format: v.format, shelfLifeMonths: Number(v.shelfLifeMonths), image: v.image }
     store.set((s) => ({ products: isNew ? [...s.products, p] : s.products.map((x) => (x.code === p.code ? { ...x, ...p } : x)) }))
     store.audit(user.name, isNew ? 'Added product' : 'Edited product', p.name, `Code ${p.code}`)
-    toast(isNew ? `${p.name} added` : `${p.name} saved`, { description: isNew ? `Batches can now use BDL-${p.code}-…` : undefined })
+    toast(isNew ? `${p.name} added` : `${p.name} saved`, { description: isNew ? `Batches can now use ${p.code}-NNNN-NNNN` : undefined })
     onClose()
   })
 

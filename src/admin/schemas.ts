@@ -22,25 +22,35 @@ export const coaRowSchema = z.object({
   pass: z.boolean(),
 })
 
+export const productRefSchema = z
+  .string({ required_error: 'Choose the product.' })
+  .trim()
+  .toUpperCase()
+  .min(1, 'Choose the product.')
+  // Codes are the 2-char XX prefix of UIBatch XX-NNNN-XXNN (A–Z, 0–9), so the
+  // catalogue can grow without touching this schema. Unknown codes still
+  // fail at the page level (BatchesPage/BulkImportPage check the catalogue).
+  .regex(/^[A-Z0-9]{2}$/, 'Choose the product.')
+
 export const registerBatchSchema = z
   .object({
     batch: batchNumberSchema,
-    product: z.string().min(1, 'Choose the product.'),
+    product: productRefSchema,
     manufactured: isoDate('manufacture date'),
     expires: isoDate('expiry date'),
     facility: z.string().min(1, 'Choose the facility.'),
     lab: z.string().min(1, 'Choose the testing lab.'),
     coa: z.array(coaRowSchema).min(1, 'Add at least one lab test result.'),
-    /** Vendor-printed aliases, one per line or comma-separated. Optional. */
+    /** Mapped manufacturer/label codes, one per line or comma-separated. Optional. */
     aliases: z
       .string()
       .optional()
       .transform((v) => parseAliases(v))
-      .refine((list) => list.length <= 20, 'At most 20 aliases per batch.'),
+      .refine((list) => list.length <= 20, 'At most 20 mapped codes per batch.'),
   })
-  .refine((v) => v.batch.slice(4, 6) === v.product, {
+  .refine((v) => v.batch.slice(0, 2) === v.product, {
     path: ['product'],
-    message: 'Product must match the two-letter code in the batch number.',
+    message: 'Product must match the two-letter code at the start of the batch number.',
   })
   .refine((v) => Date.parse(v.expires) > Date.parse(v.manufactured), {
     path: ['expires'],
@@ -56,19 +66,19 @@ export const registerBatchSchema = z
   })
   .refine((v) => !v.aliases.some((a) => a === v.batch), {
     path: ['aliases'],
-    message: 'An alias can’t repeat the canonical batch number.',
+    message: 'A mapped code can’t repeat the canonical batch number.',
   })
   .refine((v) => !v.aliases.some((a) => BATCH_PATTERN.test(a)), {
     path: ['aliases'],
-    message: 'Aliases must be vendor codes — a value already looks like a canonical BDL- number.',
+    message: 'Mapped codes must be manufacturer or label codes — a value already looks like a canonical XX-NNNN-XXNN batch.',
   })
   .refine((v) => new Set(v.aliases).size === v.aliases.length, {
     path: ['aliases'],
-    message: 'Remove duplicate aliases.',
+    message: 'Remove duplicate mapped codes.',
   })
   .refine((v) => v.aliases.every((a) => a.length >= 3 && a.length <= 40 && /[A-Z0-9]/.test(a)), {
     path: ['aliases'],
-    message: 'Each alias needs 3–40 characters with at least one letter or number.',
+    message: 'Each mapped code needs 3–40 characters with at least one letter or number.',
   })
 export type RegisterBatchInput = z.input<typeof registerBatchSchema>
 export type RegisterBatchOutput = z.output<typeof registerBatchSchema>
@@ -200,17 +210,17 @@ export const csvRowSchema = z
     expires: isoDate('expiry date'),
     facility: z.string().trim().min(1, 'Facility is missing.'),
     lab: z.string().trim().min(1, 'Lab is missing.'),
-    /** Optional vendor aliases, pipe- or semicolon-separated within the cell. */
+    /** Optional mapped manufacturer/label codes, pipe- or semicolon-separated within the cell. */
     aliases: z
       .string()
       .optional()
       .transform((v) => (v ? v.split(/[|;]+/).map((s) => normaliseAlias(s)).filter(Boolean) : []))
-      .refine((list) => list.length <= 20, 'At most 20 aliases per batch.'),
+      .refine((list) => list.length <= 20, 'At most 20 mapped codes per batch.'),
   })
-  .refine((v) => v.batch.slice(4, 6) === v.product.toUpperCase(), { path: ['product'], message: 'Product code doesn’t match the batch number.' })
+  .refine((v) => v.batch.slice(0, 2) === v.product.toUpperCase(), { path: ['product'], message: 'Product code doesn’t match the batch number.' })
   .refine((v) => Date.parse(v.expires) > Date.parse(v.manufactured), { path: ['expires'], message: 'Expiry is before manufacture.' })
-  .refine((v) => !v.aliases.some((a) => a === v.batch), { path: ['aliases'], message: 'An alias can’t repeat the canonical batch number.' })
-  .refine((v) => !v.aliases.some((a) => BATCH_PATTERN.test(a)), { path: ['aliases'], message: 'Aliases must be vendor codes, not canonical BDL- numbers.' })
+  .refine((v) => !v.aliases.some((a) => a === v.batch), { path: ['aliases'], message: 'A mapped code can’t repeat the canonical batch number.' })
+  .refine((v) => !v.aliases.some((a) => BATCH_PATTERN.test(a)), { path: ['aliases'], message: 'Mapped codes must be manufacturer or label codes, not canonical XX-NNNN-XXNN batches.' })
 
 /* ----------------------------- Reports ----------------------------- */
 

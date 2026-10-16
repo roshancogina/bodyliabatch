@@ -6,13 +6,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * UIBatch canonical standard: XX-NNNN-NNNN
- *   XX   — 2 uppercase letters (A–Z, no digits)
- *   NNNN — 4 digits
- *   NNNN — 4 digits
- * e.g. FR-2509-0312. Spaces are stripped/ignored everywhere.
+ * UIBatch canonical standard: XX-NNNN-XXNN
+ *   XX   — 2 alphanumeric chars (A–Z, 0–9), e.g. PE
+ *   NNNN — 4 digits, e.g. 2610
+ *   XXNN — 2 alphanumeric chars + 2 digits, e.g. WL01
+ * e.g. PE-2610-WL01. Spaces are stripped/ignored everywhere.
  */
-export const UIBATCH_PATTERN = /^[A-Z]{2}-\d{4}-\d{4}$/
+export const UIBATCH_PATTERN = /^[A-Z0-9]{2}-\d{4}-[A-Z0-9]{2}\d{2}$/
 
 /** Strip ALL whitespace, then uppercase. Spaces are always ignored. */
 export function stripSpaces(raw: string): string {
@@ -23,12 +23,12 @@ export function stripSpaces(raw: string): string {
  * Normalise a canonical UIBatch input: strip spaces, uppercase, ensure the
  * two hyphens are present (auto-insert when the user types 10 alphanumerics).
  * Returns the normalised string WITHOUT validating — use isCanonicalBatch().
- * e.g. "fr 2509 0312" -> "FR-2509-0312", "FR25090312" -> "FR-2509-0312".
+ * e.g. "pe 2610 wl01" -> "PE-2610-WL01", "PE2610WL01" -> "PE-2610-WL01".
  */
 export function normaliseBatch(raw: string): string {
   const s = stripSpaces(raw).replace(/[-_/.]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
   const compact = s.replace(/[^A-Z0-9]/g, '')
-  if (/^[A-Z]{2}\d{8}$/.test(compact)) {
+  if (/^[A-Z0-9]{2}\d{4}[A-Z0-9]{2}\d{2}$/.test(compact)) {
     return `${compact.slice(0, 2)}-${compact.slice(2, 6)}-${compact.slice(6, 10)}`
   }
   return s.toUpperCase()
@@ -40,10 +40,10 @@ export function isCanonicalBatch(value: string): boolean {
   return UIBATCH_PATTERN.test(stripSpaces(value))
 }
 
-/** Split a canonical code into its XX / NNNN / NNNN parts (null when invalid). */
+/** Split a canonical code into its XX / NNNN / XXNN parts (null when invalid). */
 export function parseCanonicalBatch(value: string): { prefix: string; mid: string; serial: string } | null {
   const n = normaliseBatch(value)
-  const m = /^([A-Z]{2})-(\d{4})-(\d{4})$/.exec(n)
+  const m = /^([A-Z0-9]{2})-(\d{4})-([A-Z0-9]{2}\d{2})$/.exec(n)
   if (!m) return null
   return { prefix: m[1], mid: m[2], serial: m[3] }
 }
@@ -53,9 +53,8 @@ export function parseCanonicalBatch(value: string): { prefix: string; mid: strin
  * strip spaces, uppercase, convert underscores/slashes/dots to hyphens,
  * collapse repeats, strip leading/trailing hyphens.
  * Examples:
- *   "fr 2509 0312" -> "FR-2509-0312"
- *   "mfg_fr/2509.0312" -> "MFG-FR-2509-0312"
- *   "lbl#12345" -> "LBL#12345"
+ *   "pe 2610 wl01" -> "PE-2610-WL01"
+ *   "2k26001" -> "2K26001"
  */
 export function normaliseAlias(raw: string): string {
   return stripSpaces(raw)
@@ -86,22 +85,22 @@ export function canonicalBatchError(raw: string): string | null {
   const n = normaliseBatch(input)
   const parts = n.split('-')
   if (parts.length !== 3) {
-    return `Batch numbers look like FR-2509-0312: 2 letters, a hyphen, 4 digits, a hyphen, 4 digits. You entered “${s}”.`
+    return `Batch numbers look like PE-2610-WL01: 2 characters, a hyphen, 4 digits, a hyphen, then 2 characters and 2 digits. You entered “${s}”.`
   }
   const [xx, mid, serial] = parts
-  if (!/^[A-Z]{2}$/.test(xx)) {
-    return `The first 2 characters must be letters (A–Z), e.g. “FR” in FR-2509-0312. You entered “${xx || '—'}”.`
+  // parts always has 3 non-empty strings here (normaliseBatch strips
+  // leading/trailing hyphens and collapses repeats), so no empty fallbacks.
+  if (!/^[A-Z0-9]{2}$/.test(xx)) {
+    return `The first 2 characters can be letters or digits (A–Z, 0–9), e.g. “PE” in PE-2610-WL01. You entered “${xx}”.`
   }
   if (!/^\d{4}$/.test(mid)) {
-    return `The middle 4 characters must be digits, e.g. “2509” in FR-2509-0312. You entered “${mid || '—'}”.`
+    return `The middle 4 characters must be digits, e.g. “2610” in PE-2610-WL01. You entered “${mid}”.`
   }
-  if (!/^\d{4}$/.test(serial)) {
-    return `The last 4 characters must be digits, e.g. “0312” in FR-2509-0312. You entered “${serial || '—'}”.`
-  }
-  if (n.length !== 12) {
-    return `Batch numbers are 12 characters like FR-2509-0312 (spaces are ignored). You entered “${s}”.`
+  if (!/^[A-Z0-9]{2}\d{2}$/.test(serial)) {
+    return `The last 4 characters must be 2 letters or digits followed by 2 digits, e.g. “WL01” in PE-2610-WL01. You entered “${serial}”.`
   }
   return null
 }
+
 
 

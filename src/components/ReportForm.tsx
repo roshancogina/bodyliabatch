@@ -3,12 +3,14 @@ import { Controller, useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { PURCHASE_CHANNELS, reportSchema, type ReportInput, type ReportOutput } from '../lib/schemas'
-import { submitReport } from '../lib/bff'
+import { CaptchaError, submitReport } from '../lib/bff'
+import { describeCaptchaError } from '../lib/captcha'
 import { Button } from './ui/button'
 import { Input, NativeSelect, Textarea } from './ui/input'
 import { FormField } from './ui/form-field'
 import { Checkbox } from './ui/checkbox'
 import { ErrorSummary } from './ErrorSummary'
+import { CaptchaField } from './CaptchaField'
 import { PhotoPicker } from './public/PhotoPicker'
 
 const LABELS: Record<keyof ReportInput, string> = {
@@ -33,6 +35,8 @@ export function ReportForm({
 }) {
   const summaryRef = useRef<HTMLDivElement>(null)
   const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaError, setCaptchaError] = useState<string | null>(null)
   const {
     register,
     control,
@@ -48,8 +52,21 @@ export function ReportForm({
   })
 
   const onValid = async (data: ReportOutput) => {
-    const { reference } = await submitReport(data)
-    onSubmitted(reference)
+    setCaptchaError(null)
+    if (!captchaToken) {
+      setCaptchaError(describeCaptchaError('missing'))
+      return
+    }
+    try {
+      const { reference } = await submitReport(data, captchaToken)
+      onSubmitted(reference)
+    } catch (e) {
+      if (e instanceof CaptchaError) {
+        setCaptchaError(describeCaptchaError(e.reason))
+        return
+      }
+      throw e
+    }
   }
   const onInvalid = (_e: FieldErrors<ReportInput>) => {
     setSubmitAttempted(true)
@@ -171,6 +188,18 @@ export function ReportForm({
             </div>
           )}
         />
+
+        <CaptchaField
+          onChange={(token) => {
+            setCaptchaToken(token)
+            if (token) setCaptchaError(null)
+          }}
+        />
+        {captchaError && (
+          <p role="alert" className="text-sm font-medium text-error">
+            {captchaError}
+          </p>
+        )}
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" size="lg" onClick={onCancel}>

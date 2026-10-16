@@ -3,15 +3,19 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2, MailCheck } from 'lucide-react'
 import { requestPasswordReset } from '../../lib/auth'
+import { describeCaptchaError } from '../../lib/captcha'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { FormField } from '../../components/ui/form-field'
+import { CaptchaField } from '../../components/CaptchaField'
 import { forgotSchema } from '../schemas'
 import { AuthLayout } from './AuthLayout'
 import type { AccessStep } from '../AdminApp'
 
 export function ForgotPassword({ go, className }: { go: (s: AccessStep) => void; className?: string }) {
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaError, setCaptchaError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
@@ -19,6 +23,11 @@ export function ForgotPassword({ go, className }: { go: (s: AccessStep) => void;
   } = useForm<{ email: string }>({ resolver: zodResolver(forgotSchema), defaultValues: { email: '' } })
 
   const submit = handleSubmit(async ({ email }) => {
+    setCaptchaError(null)
+    if (!captchaToken) {
+      setCaptchaError(describeCaptchaError('missing'))
+      return
+    }
     await requestPasswordReset(email)
     setSentTo(email)
   })
@@ -50,6 +59,17 @@ export function ForgotPassword({ go, className }: { go: (s: AccessStep) => void;
         <FormField id="fp-email" label="Work email" error={errors.email?.message}>
           {(a) => <Input {...a} {...register('email')} type="email" autoComplete="username" />}
         </FormField>
+        <CaptchaField
+          onChange={(token) => {
+            setCaptchaToken(token)
+            if (token) setCaptchaError(null)
+          }}
+        />
+        {captchaError && (
+          <p role="alert" className="-mt-2 text-sm font-medium text-error">
+            {captchaError}
+          </p>
+        )}
         <Button type="submit" size="lg" disabled={isSubmitting}>
           {isSubmitting && <Loader2 className="animate-spin" aria-hidden="true" />}
           {isSubmitting ? 'Sending…' : 'Send reset link'}

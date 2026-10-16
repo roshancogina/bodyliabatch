@@ -30,6 +30,11 @@ type CoaRow struct {
 	Pass          bool   `json:"pass"`
 }
 
+type BatchAlias struct {
+	Code string `json:"code"`
+	Kind string `json:"kind"`
+}
+
 type BatchRecord struct {
 	Batch          string   `json:"batch"`
 	Product        string   `json:"product"`
@@ -43,11 +48,14 @@ type BatchRecord struct {
 	Coa            []CoaRow `json:"coa"`
 	FirstCheckedAt *string  `json:"firstCheckedAt,omitempty"`
 	CoaFileName    *string  `json:"coaFileName,omitempty"`
-	Aliases        []string `json:"aliases"`
+	Aliases        []BatchAlias `json:"aliases"`
+	Qty            *int     `json:"qty,omitempty"`
+	Mrp            *float64 `json:"mrp,omitempty"`
 }
 
 type LookupResult struct {
 	Kind         string       `json:"kind"`
+	MatchedKind  *string      `json:"matchedKind,omitempty"`
 	Record       *BatchRecord `json:"record,omitempty"`
 	MatchedAlias *string      `json:"matchedAlias,omitempty"`
 	RetryAfter   *int         `json:"retryAfterSeconds,omitempty"`

@@ -79,6 +79,25 @@ func guardProdWrite(op string) error {
 	return nil
 }
 
+// rateLimitOverride lets the e2e harness raise the per-minute lookup cap on
+// TEST databases only (Playwright fires ~20 lookups/min from one IP).
+// Production ignores it: isTest() is false there, so the DB value stands.
+func rateLimitOverride() int {
+	if !isTest() {
+		return 0
+	}
+	raw := strings.TrimSpace(os.Getenv("RATE_LIMIT_PER_MINUTE"))
+	if raw == "" {
+		return 0
+	}
+	var n int
+	if _, err := fmt.Sscanf(raw, "%d", &n); err != nil || n <= 0 {
+		log.Printf("WARN: ignoring invalid RATE_LIMIT_PER_MINUTE=%q (test env)", raw)
+		return 0
+	}
+	return n
+}
+
 // isTestDatabase reports whether a DB name belongs to the test family.
 func isTestDatabase(name string) bool {
 	l := strings.ToLower(strings.TrimSpace(name))
