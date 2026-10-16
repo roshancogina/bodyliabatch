@@ -2,7 +2,7 @@ import { hrefFor } from '../lib/router'
 import React from 'react'
 import { ArrowRight } from 'lucide-react'
 import type { PublicPage } from '../App'
-import { useStore } from '../lib/store'
+import { fetchRecalls } from '../lib/bff'
 import { BatchSearchForm } from './BatchSearchForm'
 import { ProductLineup } from './ProductLineup'
 
@@ -15,7 +15,15 @@ export function SearchHero({
   checking: boolean
   navigate: (p: PublicPage) => void
 }) {
-  const recalls = useStore((s) => s.batches.filter((b) => b.status === 'recalled').length)
+  // Live recall count from the API; defaults to hidden when offline/mocked.
+  const [recalls, setRecalls] = React.useState(0)
+  React.useEffect(() => {
+    let live = true
+    fetchRecalls()
+      .then((r) => { if (live) setRecalls(r.length) })
+      .catch(() => { if (live) setRecalls(0) })
+    return () => { live = false }
+  }, [])
 
   return (
     <section aria-labelledby="hero-title" className="overflow-hidden">

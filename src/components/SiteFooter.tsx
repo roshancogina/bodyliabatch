@@ -2,10 +2,10 @@ import { hrefFor } from '../lib/router'
 import React from 'react'
 import { ExternalLink } from 'lucide-react'
 import type { PublicPage } from '../App'
-import { useStore } from '../lib/store'
+import { SUPPORT_EMAIL } from '../data/catalog-static'
 
 export function SiteFooter({ navigate }: { navigate: (p: PublicPage) => void }) {
-  const email = useStore((s) => s.settings.supportEmail)
+  const email = SUPPORT_EMAIL
   const links: [string, PublicPage | string][] = [
     ['Track a report', 'track'],
     ['Active recalls', 'recalls'],

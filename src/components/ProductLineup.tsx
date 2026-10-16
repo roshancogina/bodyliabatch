@@ -1,5 +1,5 @@
 import React from 'react'
-import { PRODUCTS } from '../data/products'
+import { CATALOGUE as PRODUCTS } from '../data/catalog-static'
 
 /** Decorative arrangement of the supplied pack shots on a sand plinth. */
 export function ProductLineup() {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { GLYPH, WORDMARK } from '../../data/products'
+import { GLYPH, WORDMARK } from '../../data/catalog-static'
 import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils'
 

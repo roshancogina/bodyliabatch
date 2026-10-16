@@ -32,6 +32,65 @@ describe('frontend data isolation', () => {
     expect(auth).toContain("assertMockAllowed('mock preview auth')")
   })
 
+  it('production render paths never import mock fixtures', () => {
+    // WSOD guard (Oct 2026): SiteHeader imported data/products at module
+    // scope, so the prod build threw [isolation] at load and rendered a
+    // white screen. Prod-safe modules: data/catalog-static (brand + display
+    // strings) and data/batches (pure types + alias helpers only).
+    // data/* fixtures + lib/store + lib/auth are dev/test-only.
+    const prodPaths = [
+      'App.tsx',
+      'index.tsx',
+      'components/SiteHeader.tsx',
+      'components/SiteFooter.tsx',
+      'components/SearchHero.tsx',
+      'components/HowItWorks.tsx',
+      'components/ProductLineup.tsx',
+      'components/BatchSearchForm.tsx',
+      'components/WhereToFindDialog.tsx',
+      'components/ReportForm.tsx',
+      'components/public/TrackReport.tsx',
+      'components/public/ShareFeedback.tsx',
+      'components/public/ActiveRecalls.tsx',
+      'components/public/FaqPage.tsx',
+      'components/public/LegalPage.tsx',
+      'components/public/NotFoundPage.tsx',
+      'components/public/MaintenancePage.tsx',
+      'components/CaptchaField.tsx',
+      'lib/bff.ts',
+      'lib/products.ts',
+      'lib/router.ts',
+      'lib/schemas.ts',
+      'lib/captcha.ts',
+      'lib/runtime-env.ts',
+      'data/catalog-static.ts',
+    ]
+    // NOTE: data/batches is PURE types + alias helpers (no fixtures, no
+    // guard) since the WSOD fix — bff.ts + AliasManager import it at runtime
+    // safely. Banned: fixture modules (products, admin-seed, mock-batches)
+    // and the dev-only store/auth singletons.
+    const banned = /from\s+['"](\.\.\/)*data\/(products|admin-seed|mock-batches)['"]|from\s+['"](\.\.\/)*lib\/(store|auth)['"]/
+    const offenders: string[] = []
+    for (const rel of prodPaths) {
+      const f = join(here, '..', rel)
+      let src: string
+      try {
+        src = readFileSync(f, 'utf8')
+      } catch {
+        offenders.push(`${rel}: listed prod path does not exist`)
+        continue
+      }
+      // type-only imports are erased at build time — strip them first.
+      const runtime = src
+        .split('\n')
+        .filter((line) => !/^\s*import\s+type\b/.test(line))
+        .join('\n')
+      const m = runtime.match(banned)
+      if (m) offenders.push(`${rel}: runtime import of mock module [${m[0]}]`)
+    }
+    expect(offenders).toEqual([])
+  })
+
   it('no hardcoded service URL or credential in src', () => {
     const scan = (dir: string): string[] => {
       const out: string[] = []

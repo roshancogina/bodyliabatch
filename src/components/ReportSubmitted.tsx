@@ -1,10 +1,9 @@
 import React from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { Button } from './ui/button'
-import { useStore } from '../lib/store'
 
 export function ReportSubmitted({ reference, onHome, onTrack }: { reference: string; onHome: () => void; onTrack: () => void }) {
-  const hours = useStore((s) => s.settings.replyTargetHours)
+  const hours = 48 // reply SLA (settings.replyTargetHours in the admin console)
   return (
     <div className="mx-auto max-w-2xl px-5 py-16 sm:px-8 lg:py-24">
       <CheckCircle2 className="size-12 text-success" strokeWidth={1.75} aria-hidden="true" />

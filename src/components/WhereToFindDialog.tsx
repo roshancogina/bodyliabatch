@@ -1,7 +1,7 @@
 import React from 'react'
 import { HelpCircle } from 'lucide-react'
 import { Dialog, DialogTrigger, DialogContent } from './ui/dialog'
-import { PRODUCTS } from '../data/products'
+import { CATALOGUE as PRODUCTS } from '../data/catalog-static'
 
 export function WhereToFindDialog() {
   return (

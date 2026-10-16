@@ -1,11 +1,10 @@
 import React from 'react'
-import { useStore } from '../../lib/store'
+import { SUPPORT_EMAIL } from '../../data/catalog-static'
 
 type Page = 'accessibility' | 'privacy' | 'terms'
 
 export function LegalPage({ page }: { page: Page }) {
-  const s = useStore((st) => st.settings)
-  const content = CONTENT(s.supportEmail, s.retentionMonths)[page]
+  const content = CONTENT(SUPPORT_EMAIL, 12)[page]
   return (
     <div className="mx-auto max-w-3xl px-5 pb-20 pt-10 sm:px-8 lg:pt-16">
       <h1 data-autofocus tabIndex={-1} className="font-serif text-[2.25rem] font-semibold leading-tight text-burgundy focus:outline-none sm:text-5xl">

@@ -95,6 +95,18 @@ export interface Hotspot {
   linkedReports: string[]
 }
 
+
+
+
+/** Seed timestamps are relative to page load so the preview always looks current. */
+const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString()
+
+/**
+ * STATIC display constants — PROD-SAFE (no mock data, no guard).
+ * Labels and lookups the public site AND admin console render in every
+ * environment; canonical DATA (users, reports, settings rows) comes from
+ * Postgres via the Go API in production.
+ */
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrator',
   quality: 'Quality analyst',
@@ -114,8 +126,8 @@ export const STATUS_LABEL: Record<ReportStatus, string> = {
   resolved_counterfeit: 'Resolved · counterfeit',
 }
 
-/** Seed timestamps are relative to page load so the preview always looks current. */
-const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString()
+/** @deprecated import SUPPORT_EMAIL from '../catalog-static' instead (prod-safe). */
+export const FALLBACK_SUPPORT_EMAIL = 'care@bodylia.in'
 
 /**
  * MOCK FIXTURES — dev/test only. Every SEED_* below throws in production builds.

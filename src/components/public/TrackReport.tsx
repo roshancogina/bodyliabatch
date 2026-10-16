@@ -8,7 +8,7 @@ import type { PublicPage } from '../../App'
 import { trackSchema, type TrackInput } from '../../lib/schemas'
 import { CaptchaError, trackReport, type TrackResult } from '../../lib/bff'
 import { describeCaptchaError } from '../../lib/captcha'
-import { useStore } from '../../lib/store'
+import { SUPPORT_EMAIL } from '../../data/catalog-static'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -21,7 +21,7 @@ export function TrackReport({ prefill, navigate }: { prefill?: string; navigate:
   const [result, setResult] = useState<TrackResult | null>(null)
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const [captchaError, setCaptchaError] = useState<string | null>(null)
-  const email = useStore((s) => s.settings.supportEmail)
+  const email = SUPPORT_EMAIL
   const {
     register,
     handleSubmit,

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { aliasCode, aliasKind, BATCHES } from '../data/batches'
+import { aliasCode, aliasKind } from '../data/batches'
+import { BATCHES } from '../data/mock-batches'
 import { CaptchaError, lookupBatch, remoteLookup, resolveBatch, searchBatches, stubApiBaseForTests, submitReport, trackReport, useRemoteBff } from './bff'
+import { mockLookup, mockSubmitReport, mockTrackReport, resetMockRateLimit } from './mock-bff'
 import { createChallenge, solveChallenge } from './captcha'
 import { store } from './store'
 
@@ -9,13 +11,14 @@ const testToken = () => solveChallenge(createChallenge(TEST_SECRET, { salt: 't'.
 
 beforeEach(() => {
   store.set(() => ({ batches: [...BATCHES] }))
+  resetMockRateLimit()
   vi.unstubAllGlobals()
   vi.stubEnv('VITE_API_URL', '')
 })
 
 describe('UIBatch alias resolution (manufacturer + label mapping)', () => {
   it('resolves exact canonical codes', () => {
-    const r = resolveBatch('PE-2610-WL01')
+    const r = resolveBatch('PE-2610-WL01', BATCHES)
     expect(r?.record.batch).toBe('PE-2610-WL01')
     expect(r?.record.product).toBe('PE')
     expect(r?.matchedAlias).toBeUndefined()
@@ -23,8 +26,8 @@ describe('UIBatch alias resolution (manufacturer + label mapping)', () => {
   })
 
   it('resolves canonical with spaces stripped', () => {
-    expect(resolveBatch('pe 2610 wl01')?.record.batch).toBe('PE-2610-WL01')
-    expect(resolveBatch('PE2610WL01')?.record.batch).toBe('PE-2610-WL01')
+    expect(resolveBatch('pe 2610 wl01', BATCHES)?.record.batch).toBe('PE-2610-WL01')
+    expect(resolveBatch('PE2610WL01', BATCHES)?.record.batch).toBe('PE-2610-WL01')
   })
 
   it('resolves first-batch manufacturer codes with kind', () => {
@@ -36,7 +39,7 @@ describe('UIBatch alias resolution (manufacturer + label mapping)', () => {
       ['2K26005', 'CI-2610-WL01'],
     ]
     for (const [mfg, canon] of pairs) {
-      const r = resolveBatch(mfg)
+      const r = resolveBatch(mfg, BATCHES)
       expect(r?.record.batch, mfg).toBe(canon)
       expect(r?.matchedAlias, mfg).toBe(mfg)
       expect(r?.matchedKind, mfg).toBe('manufacturer')
@@ -44,21 +47,21 @@ describe('UIBatch alias resolution (manufacturer + label mapping)', () => {
   })
 
   it('resolves case/space-insensitive mapped input', () => {
-    expect(resolveBatch('  2k26001 ')?.record.batch).toBe('PE-2610-WL01')
-    expect(resolveBatch('2k26005')?.record.batch).toBe('CI-2610-WL01')
+    expect(resolveBatch('  2k26001 ', BATCHES)?.record.batch).toBe('PE-2610-WL01')
+    expect(resolveBatch('2k26005', BATCHES)?.record.batch).toBe('CI-2610-WL01')
   })
 
   it('returns null for unknown codes', () => {
-    expect(resolveBatch('FN-2501-0001')).toBeNull()
-    expect(resolveBatch('NOPE-123')).toBeNull()
+    expect(resolveBatch('FN-2501-0001', BATCHES)).toBeNull()
+    expect(resolveBatch('NOPE-123', BATCHES)).toBeNull()
   })
 
   it('admin search finds by canonical or manufacturer code', () => {
-    expect(searchBatches('PE-2610-WL01').map((b) => b.batch)).toContain('PE-2610-WL01')
-    expect(searchBatches('2K26001').map((b) => b.batch)).toContain('PE-2610-WL01')
-    expect(searchBatches('2k26005').map((b) => b.batch)).toContain('CI-2610-WL01')
-    expect(searchBatches('pe2610wl01').map((b) => b.batch)).toContain('PE-2610-WL01')
-    expect(searchBatches('zzz-no-match')).toHaveLength(0)
+    expect(searchBatches('PE-2610-WL01', BATCHES).map((b) => b.batch)).toContain('PE-2610-WL01')
+    expect(searchBatches('2K26001', BATCHES).map((b) => b.batch)).toContain('PE-2610-WL01')
+    expect(searchBatches('2k26005', BATCHES).map((b) => b.batch)).toContain('CI-2610-WL01')
+    expect(searchBatches('pe2610wl01', BATCHES).map((b) => b.batch)).toContain('PE-2610-WL01')
+    expect(searchBatches('zzz-no-match', BATCHES)).toHaveLength(0)
   })
 })
 
@@ -75,7 +78,7 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
   it('lookupBatch returns the same product details for every mapped code', async () => {
     const now = new Date('2027-06-01T00:00:00Z')
     for (const input of ['PE-2610-WL01', 'pe 2610 wl01', '2K26001', 'PE2610WL01']) {
-      const res = await lookupBatch(input, now)
+      const res = await mockLookup(input, now)
       expect(res.kind, input).toBe('genuine')
       if (res.kind === 'genuine') {
         expect(res.record.batch).toBe('PE-2610-WL01')
@@ -90,10 +93,10 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
       settings: { ...store.get().settings, rateLimitPerMinute: 100 },
     }))
     expect(store.get().batches.find((b) => b.batch === 'PE-2610-WL01')?.firstCheckedAt).toBeUndefined()
-    await lookupBatch('pe 2610 wl01')
+    await mockLookup('pe 2610 wl01')
     expect(store.get().batches.find((b) => b.batch === 'PE-2610-WL01')?.firstCheckedAt).toBeTruthy()
     // Second lookup keeps the original stamp (already-stamped branch).
-    await lookupBatch('PE-2610-WL01')
+    await mockLookup('PE-2610-WL01')
     expect(store.get().batches.find((b) => b.batch === 'PE-2610-WL01')?.firstCheckedAt).toBeTruthy()
   })
 
@@ -103,8 +106,8 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
       batch: 'PE-2610-WL01', channel: 'Amazon' as const,
       message: 'Missing captcha must raise CaptchaError here.', consent: true as const,
     }
-    await expect(submitReport(payload)).rejects.toBeInstanceOf(CaptchaError)
-    await expect(trackReport('SR-2026-04790', 'priya.n@example.com')).rejects.toBeInstanceOf(CaptchaError)
+    await expect(mockSubmitReport(payload)).rejects.toBeInstanceOf(CaptchaError)
+    await expect(mockTrackReport('SR-2026-04790', 'priya.n@example.com')).rejects.toBeInstanceOf(CaptchaError)
   })
 
   it('remote lookupBatch/trackReport/submitReport delegate to the Go service', async () => {
@@ -142,7 +145,7 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
       batches: BATCHES.map((b) => (b.batch === 'PE-2610-WL01' ? { ...b, firstCheckedAt: undefined } : b)),
       settings: { ...store.get().settings, rateLimitPerMinute: 100 },
     }))
-    const first = await lookupBatch('PE-2610-WL01', new Date('2027-06-01T00:00:00Z'))
+    const first = await mockLookup('PE-2610-WL01', new Date('2027-06-01T00:00:00Z'))
     expect(first.kind).toBe('genuine')
     expect(store.get().batches.find((b) => b.batch === 'PE-2610-WL01')?.firstCheckedAt).toBeTruthy()
 
@@ -154,17 +157,17 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
         { ...s.batches[0], batch: 'MB-2203-EX01', product: 'MB', expires: '2020-01-01' },
       ],
     }))
-    const recalled = await lookupBatch('PH-2504-RC01', new Date('2027-06-01T00:00:00Z'))
+    const recalled = await mockLookup('PH-2504-RC01', new Date('2027-06-01T00:00:00Z'))
     expect(recalled.kind).toBe('recalled')
 
-    const expired = await lookupBatch('MB-2203-EX01', new Date('2027-06-01T00:00:00Z'))
+    const expired = await mockLookup('MB-2203-EX01', new Date('2027-06-01T00:00:00Z'))
     expect(expired.kind).toBe('expired')
 
-    const missing = await lookupBatch('FN-2501-0001', new Date('2027-06-01T00:00:00Z'))
+    const missing = await mockLookup('FN-2501-0001', new Date('2027-06-01T00:00:00Z'))
     expect(missing.kind).toBe('not_found')
 
     store.set(() => ({ settings: { ...store.get().settings, rateLimitPerMinute: 0 } }))
-    const limited = await lookupBatch('PE-2610-WL01', new Date('2027-06-01T00:00:00Z'))
+    const limited = await mockLookup('PE-2610-WL01', new Date('2027-06-01T00:00:00Z'))
     expect(limited.kind).toBe('rate_limited')
     store.set(() => ({ settings: { ...store.get().settings, rateLimitPerMinute: 100 } }))
   })
@@ -184,13 +187,13 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
       message: 'This is a sufficiently long suspicious-pack message.',
       consent: true as const,
     }
-    await expect(submitReport(payload)).rejects.toBeInstanceOf(CaptchaError)
-    const { reference } = await submitReport(payload, testToken())
+    await expect(mockSubmitReport(payload)).rejects.toBeInstanceOf(CaptchaError)
+    const { reference } = await mockSubmitReport(payload, testToken())
     expect(reference).toMatch(/^SR-\d{4}-\d{5}$/)
-    await expect(trackReport(reference, 'test@example.com')).rejects.toBeInstanceOf(CaptchaError)
-    expect((await trackReport(reference, 'test@example.com', testToken())).found).toBe(true)
-    expect((await trackReport(reference, 'someone-else@example.com', testToken())).found).toBe(false)
-    expect((await trackReport('SR-2099-00000', 'test@example.com', testToken())).found).toBe(false)
+    await expect(mockTrackReport(reference, 'test@example.com')).rejects.toBeInstanceOf(CaptchaError)
+    expect((await mockTrackReport(reference, 'test@example.com', testToken())).found).toBe(true)
+    expect((await mockTrackReport(reference, 'someone-else@example.com', testToken())).found).toBe(false)
+    expect((await mockTrackReport('SR-2099-00000', 'test@example.com', testToken())).found).toBe(false)
 
   })
 
@@ -217,24 +220,23 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
 
   it('resolveBatch branch edges: empty, non-canonical alias path, substring alias, blank search', () => {
     // bff.ts:51 — empty normalised input returns null
-    expect(resolveBatch('')).toBeNull()
-    expect(resolveBatch('   ')).toBeNull()
+    expect(resolveBatch('', BATCHES)).toBeNull()
+    expect(resolveBatch('   ', BATCHES)).toBeNull()
     // bff.ts:40 — legacy plain-string aliases resolve with manufacturer kind
-    store.set(() => ({ batches: [...BATCHES] }))
+    const withLegacy = [...BATCHES]
     const legacy = { batch: 'ZZ-2601-WL01', product: 'ZZ', manufactured: '2026-01-01', expires: '2028-01-01', lab: 'L', facility: 'F', status: 'released' as const, coa: [], aliases: ['LEGACY-1'] }
-    store.set((s) => ({ batches: [...s.batches, legacy] }))
-    const r = resolveBatch('legacy-1')
+    withLegacy.push(legacy)
+    const r = resolveBatch('legacy-1', withLegacy)
     expect(r?.record.batch).toBe('ZZ-2601-WL01')
     expect(r?.matchedKind).toBe('manufacturer')
     // bff.ts:68/70 — canonical batch + alias compact-key fallbacks
-    expect(resolveBatch('zz2601wl01')?.record.batch).toBe('ZZ-2601-WL01')
+    expect(resolveBatch('zz2601wl01', withLegacy)?.record.batch).toBe('ZZ-2601-WL01')
     const legacy2 = { batch: 'YY-2601-WL01', product: 'YY', manufactured: '2026-01-01', expires: '2028-01-01', lab: 'L', facility: 'F', status: 'released' as const, coa: [], aliases: [{ code: 'A B#C', kind: 'label' as const }] }
-    store.set((s) => ({ batches: [...s.batches, legacy2] }))
-    expect(resolveBatch('abc')?.record.batch).toBe('YY-2601-WL01')
+    withLegacy.push(legacy2)
+    expect(resolveBatch('abc', withLegacy)?.record.batch).toBe('YY-2601-WL01')
     // bff.ts:79 — blank admin search returns everything
-    expect(searchBatches('').length).toBeGreaterThanOrEqual(BATCHES.length)
-    expect(searchBatches('   ').length).toBeGreaterThanOrEqual(BATCHES.length)
-    store.set(() => ({ batches: [...BATCHES] }))
+    expect(searchBatches('', BATCHES).length).toBeGreaterThanOrEqual(BATCHES.length)
+    expect(searchBatches('   ', BATCHES).length).toBeGreaterThanOrEqual(BATCHES.length)
   })
 
   it('mock submit stores spaced canonical, phone/photo branches + track email edges', async () => {
@@ -244,7 +246,7 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
       batch: 'fe 2610 wl01', channel: 'Amazon' as const,
       message: 'Atlas pack report with enough characters here.', consent: true as const,
     }
-    const c1 = await submitReport(spaced, testToken())
+    const c1 = await mockSubmitReport(spaced, testToken())
     const s1 = store.get().reports.find((r) => r.reference === c1.reference)!
     expect(s1.batch).toBe('fe 2610 wl01')
     expect(s1.phone).toBeUndefined()
@@ -256,7 +258,7 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
       photo: { length: 1, 0: { name: 'pack.jpg', type: 'image/jpeg', size: 100 } } as unknown as FileList,
       message: 'Photo report with enough characters here.', consent: true as const,
     }
-    const c2 = await submitReport(full, testToken())
+    const c2 = await mockSubmitReport(full, testToken())
     const s2 = store.get().reports.find((r) => r.reference === c2.reference)!
     expect(s2.phone).toBe('98765 43210')
     expect(s2.photoName).toBe('pack.jpg')
@@ -269,16 +271,15 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
   })
 
   it('covers aliasEntries undefined-alias + compact canonical fallbacks', () => {
-    store.set(() => ({ batches: [...BATCHES] }))
+    const extended = [...BATCHES]
     // bff.ts:40 block1 — batch with NO aliases array takes the ?? [] path
     const noAliases = { batch: 'QQ-2601-WL01', product: 'QQ', manufactured: '2026-01-01', expires: '2028-01-01', lab: 'L', facility: 'F', status: 'released' as const, coa: [] }
-    store.set((s) => ({ batches: [...s.batches, noAliases] }))
-    expect(resolveBatch('QQ-2601-WL01')?.record.batch).toBe('QQ-2601-WL01')
+    extended.push(noAliases)
+    expect(resolveBatch('QQ-2601-WL01', extended)?.record.batch).toBe('QQ-2601-WL01')
     // bff.ts:68 — stored batch without hyphens only matches via compact key
     const flat = { batch: 'ZZ2601WL01', product: 'ZZ', manufactured: '2026-01-01', expires: '2028-01-01', lab: 'L', facility: 'F', status: 'released' as const, coa: [], aliases: [] }
-    store.set((s) => ({ batches: [...s.batches, flat] }))
-    expect(resolveBatch('ZZ-2601-WL01')?.record.batch).toBe('ZZ2601WL01')
-    store.set(() => ({ batches: [...BATCHES] }))
+    extended.push(flat)
+    expect(resolveBatch('ZZ-2601-WL01', extended)?.record.batch).toBe('ZZ2601WL01')
   })
 
   it('remote submit/track send captchaToken to the Go service', async () => {
@@ -328,7 +329,7 @@ describe('UIBatch alias helpers + report/track + remote seam', () => {
       batch: '2K26002', channel: 'Amazon' as const,
       message: 'Bare-minimum report with enough characters here.', consent: true as const,
     }
-    const created = await submitReport(payload, testToken())
+    const created = await mockSubmitReport(payload, testToken())
     const stored = store.get().reports.find((r) => r.reference === created.reference)!
     expect(stored.batch).toBe('2K26002')
     expect(stored.phone).toBeUndefined()

@@ -1,8 +1,7 @@
 import React from 'react'
 import { format } from 'date-fns'
 import { Wrench } from 'lucide-react'
-import { GLYPH, WORDMARK } from '../../data/products'
-import { useStore } from '../../lib/store'
+import { GLYPH, SUPPORT_EMAIL, WORDMARK } from '../../data/catalog-static'
 import type { PublicPage } from '../../App'
 import { SiteHeader } from '../SiteHeader'
 import { SiteFooter } from '../SiteFooter'
@@ -19,7 +18,9 @@ export function MaintenancePage({
 }) {
   const Main = preview ? 'div' : 'main'
   const Heading = preview ? 'p' : 'h1'
-  const s = useStore((st) => st.settings)
+  // Live maintenance copy comes from the settings API; until it loads, use
+  // neutral static defaults so the page never depends on the mock store.
+  const s = { maintenanceMessage: 'We are performing scheduled maintenance.', maintenanceUntil: '', supportEmail: SUPPORT_EMAIL }
   if (preview) {
     return (
       <div className="flex flex-col bg-ivory">

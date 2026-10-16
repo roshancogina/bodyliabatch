@@ -1,5 +1,6 @@
 import { useRef, useSyncExternalStore } from 'react'
-import { BATCHES, type BatchRecord } from '../data/batches'
+import type { BatchRecord } from '../data/batches'
+import { BATCHES } from '../data/mock-batches'
 import { PRODUCTS, type Product } from '../data/products'
 import { assertMockAllowed } from './runtime-env'
 import {

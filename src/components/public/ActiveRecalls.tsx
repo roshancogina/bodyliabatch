@@ -1,15 +1,32 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { format } from 'date-fns'
-import { ShieldCheck } from 'lucide-react'
-import { useStore } from '../../lib/store'
+import { Loader2, ShieldCheck } from 'lucide-react'
+import { fetchRecalls } from '../../lib/bff'
 import { getProduct } from '../../lib/products'
+import { SUPPORT_EMAIL } from '../../data/catalog-static'
 import { Button } from '../ui/button'
+import type { BatchRecord } from '../../data/batches'
 
 export function ActiveRecalls({ onCheck }: { onCheck: (batch: string) => void }) {
-  const recalled = useStore((s) => s.batches.filter((b) => b.status === 'recalled'))
-  const audit = useStore((s) => s.audit)
-  const email = useStore((s) => s.settings.supportEmail)
-  const recalledOn = (batch: string) => audit.find((a) => a.target === batch && a.action === 'Recalled batch')?.at
+  const [recalled, setRecalled] = useState<BatchRecord[] | null>(null)
+  const email = SUPPORT_EMAIL
+  useEffect(() => {
+    let live = true
+    fetchRecalls()
+      .then((r) => { if (live) setRecalled(r) })
+      .catch(() => { if (live) setRecalled([]) })
+    return () => { live = false }
+  }, [])
+
+  const recalledOn = (_batch: string): string | undefined => undefined
+
+  if (recalled === null) {
+    return (
+      <div className="mx-auto max-w-4xl px-5 pb-20 pt-10 sm:px-8 lg:pt-16" role="status" aria-live="polite">
+        <p className="inline-flex items-center gap-2 text-graphite"><Loader2 className="animate-spin" aria-hidden="true" /> Loading recalls…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-5 pb-20 pt-10 sm:px-8 lg:pt-16">

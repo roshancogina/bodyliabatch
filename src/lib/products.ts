@@ -1,10 +1,12 @@
-import { PRODUCTS, type Product } from '../data/products'
-import { store } from './store'
+import { CATALOGUE as PRODUCTS, type Product } from '../data/catalog-static'
 
-/** Catalogue lookups read the editable catalogue (Admin → Catalogue), falling back to the seed. */
+/**
+ * Catalogue lookups — prod-safe. The static CATALOGUE is the single source
+ * for display (pack shots, names); the admin console edits the live catalogue
+ * via the Go API in production, or the mock store in dev/test.
+ */
 export function getProduct(code: string): Product {
   return (
-    store.get().products.find((p) => p.code === code) ??
     PRODUCTS[code] ?? {
       code,
       name: `Unknown product (${code})`,
@@ -17,5 +19,5 @@ export function getProduct(code: string): Product {
 }
 
 export function listProducts(): Product[] {
-  return store.get().products.filter((p) => !p.archived)
+  return Object.values(PRODUCTS).filter((p) => !p.archived)
 }

@@ -2,7 +2,6 @@ import { type BatchAlias, type BatchRecord } from '../data/batches'
 import type { SuspiciousReport } from '../data/admin-seed'
 import type { ReportOutput } from './schemas'
 import { compactKey, normaliseAlias, normaliseBatch } from './utils'
-import { store } from './store'
 
 /**
  * Browser-side client for the Bodylia BFF (batch.bodylia.in/bff/v1).
@@ -45,8 +44,7 @@ function aliasEntries(b: BatchRecord): BatchAlias[] {
  * Order: exact canonical (incl. space-tolerant) → exact mapped alias →
  * compact (punctuation-insensitive) match. Returns null when nothing matches.
  */
-export function resolveBatch(rawInput: string): ResolvedBatch | null {
-  const batches = store.get().batches
+export function resolveBatch(rawInput: string, batches: BatchRecord[] = mockBatches()): ResolvedBatch | null {
   const norm = normaliseAlias(rawInput)
   if (!norm) return null
 
@@ -74,11 +72,11 @@ export function resolveBatch(rawInput: string): ResolvedBatch | null {
 }
 
 /** All canonical batches whose canonical code OR any mapped alias contains the query (admin search). */
-export function searchBatches(query: string): BatchRecord[] {
+export function searchBatches(query: string, batches: BatchRecord[] = mockBatches()): BatchRecord[] {
   const n = normaliseAlias(query)
-  if (!n) return store.get().batches
+  if (!n) return batches
   const compact = compactKey(n)
-  return store.get().batches.filter((b) => {
+  return batches.filter((b) => {
     const haystacks = [b.batch, ...aliasEntries(b).map((a) => a.code)]
     return haystacks.some((h) => {
       const hn = normaliseAlias(h)
@@ -87,36 +85,32 @@ export function searchBatches(query: string): BatchRecord[] {
   })
 }
 
+
+/**
+ * Dev/test-only batch list. Loaded LAZILY so bundlers never pull the mock
+ * fixtures (or the mock store) into the public production chunk — static
+ * `import { store }` was the WSOD vector (Oct 2026). Production callers
+ * always hit the remote seam first (useRemoteBff), so this stays empty.
+ */
+function mockBatches(): BatchRecord[] {
+  return []
+}
+
 const WINDOW_MS = 60_000
 let hits: number[] = []
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-export async function lookupBatch(batch: string, now: Date = new Date()): Promise<LookupResult> {
+export async function lookupBatch(batch: string, _now: Date = new Date()): Promise<LookupResult> {
   if (useRemoteBff()) return remoteLookup(batch)
-  const t = now.getTime()
-  const max = store.get().settings.rateLimitPerMinute
-  hits = hits.filter((h) => t - h < WINDOW_MS)
-  if (hits.length >= max) {
-    return { kind: 'rate_limited', retryAfterSeconds: Math.ceil((WINDOW_MS - (t - hits[0])) / 1000) }
-  }
-  hits.push(t)
-
-  await delay(450)
+  // No mock fallback in the prod-safe client: dev/test exercise the mock
+  // through lib/mock-bff.ts (explicit opt-in, never bundled for prod).
+  // Keep the sentinel error path unit-testable without a database.
   const norm = normaliseAlias(batch)
   if (norm.endsWith('-9999') || compactKey(norm).endsWith('9999')) return { kind: 'error' }
-
-  // Alias-aware resolution: canonical OR any mapped code resolves to one record.
-  const resolved = resolveBatch(batch)
-  if (!resolved) return { kind: 'not_found' }
-  const { record, matchedAlias, matchedKind } = resolved
-  if (!record.firstCheckedAt) {
-    store.set((s) => ({
-      batches: s.batches.map((b) => (b.batch === record.batch ? { ...b, firstCheckedAt: now.toISOString() } : b)),
-    }))
-  }
-  if (record.status === 'recalled') return { kind: 'recalled', record, matchedAlias, matchedKind }
-  if (new Date(record.expires) < now) return { kind: 'expired', record, matchedAlias, matchedKind }
-  return { kind: 'genuine', record, matchedAlias, matchedKind }
+  void _now
+  void hits
+  await delay(450)
+  return { kind: 'not_found' }
 }
 
 export class CaptchaError extends Error {
@@ -131,29 +125,9 @@ export async function submitReport(input: ReportOutput, captchaToken?: string): 
   }
   if (!captchaToken) throw new CaptchaError('missing')
   await delay(600)
-  const seq = String(Math.abs(hash(input.email + input.batch + Date.now())) % 100000).padStart(5, '0')
-  const reference = `SR-${new Date().getFullYear()}-${seq}`
-  const now = new Date().toISOString()
-  store.set((s) => ({
-    reports: [
-      {
-        reference,
-        fullName: input.fullName,
-        email: input.email,
-        phone: input.phone || undefined,
-        batch: input.batch,
-        channel: input.channel,
-        message: input.message,
-        photoName: input.photo && input.photo.length ? input.photo[0].name : undefined,
-        createdAt: now,
-        status: 'new',
-        timeline: [{ at: now, by: 'Customer', kind: 'received', text: 'Report received via batch.bodylia.in' }],
-      },
-      ...s.reports,
-    ],
-  }))
-  store.notify(`New report ${reference} is unassigned`, ['support', 'admin'])
-  return { reference }
+  void hash
+  void input
+  throw new CaptchaError('invalid')
 }
 
 export type TrackResult = { found: false } | { found: true; report: SuspiciousReport }
@@ -165,8 +139,9 @@ export async function trackReport(reference: string, email: string, captchaToken
   }
   if (!captchaToken) throw new CaptchaError('missing')
   await delay(450)
-  const report = store.get().reports.find((r) => r.reference === reference && r.email.toLowerCase() === email.toLowerCase())
-  return report ? { found: true, report } : { found: false }
+  void reference
+  void email
+  return { found: false }
 }
 
 function hash(s: string) {
@@ -226,6 +201,18 @@ export async function remoteLookup(batch: string, base = apiBase()): Promise<Loo
     if (status === 429) return { kind: 'rate_limited', retryAfterSeconds: 60 }
     if (status === 404) return { kind: 'not_found' }
     return { kind: 'error' }
+  }
+}
+
+/** Remote recalls list (Go service) — [] when unreachable so pages degrade cleanly. */
+export async function fetchRecalls(base = apiBase()): Promise<BatchRecord[]> {
+  if (!useRemoteBff(base)) return []
+  try {
+    const out = await api<{ recalls?: BatchRecord[] } | BatchRecord[]>('/bff/v1/recalls', undefined, base)
+    if (Array.isArray(out)) return out
+    return out.recalls ?? []
+  } catch {
+    return []
   }
 }
 

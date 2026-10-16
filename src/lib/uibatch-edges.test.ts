@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BATCHES } from '../data/batches'
+import { BATCHES } from '../data/mock-batches'
 import { apiBase, lookupBatch, remoteLookup, resolveApiBase, resolveBatch, searchBatches, stubApiBaseForTests, submitReport, trackReport } from './bff'
 import { createChallenge, solveChallenge } from './captcha'
 import { store } from './store'
+import { mockLookup, resetMockRateLimit } from './mock-bff'
 
 const TEST_SECRET = 'test-captcha-secret-0123456789abcdef'
 const testToken = () => solveChallenge(createChallenge(TEST_SECRET, { salt: 'u'.repeat(32) }), { difficulty: 1 }).token
 
 beforeEach(() => {
   store.set(() => ({ batches: [...BATCHES] }))
+  resetMockRateLimit()
   vi.unstubAllGlobals()
   vi.stubEnv('VITE_API_URL', '')
 })
@@ -16,15 +18,14 @@ beforeEach(() => {
 describe('UIBatch coverage edges (v8 branch mapping)', () => {
   it('resolves batches with NO aliases array (?? [] fallback)', () => {
     const noAliases = { batch: 'QQ-2601-WL01', product: 'QQ', manufactured: '2026-01-01', expires: '2028-01-01', lab: 'L', facility: 'F', status: 'released' as const, coa: [] }
-    store.set((s) => ({ batches: [...s.batches, noAliases] }))
-    expect(resolveBatch('QQ-2601-WL01')?.record.batch).toBe('QQ-2601-WL01')
-    expect(searchBatches('QQ-2601').map((b) => b.batch)).toContain('QQ-2601-WL01')
+    const extended = [...BATCHES, noAliases]
+    expect(resolveBatch('QQ-2601-WL01', extended)?.record.batch).toBe('QQ-2601-WL01')
+    expect(searchBatches('QQ-2601', extended).map((b) => b.batch)).toContain('QQ-2601-WL01')
   })
 
   it('matches hyphen-less stored batch only via compact key', () => {
     const flat = { batch: 'ZZ2601WL01', product: 'ZZ', manufactured: '2026-01-01', expires: '2028-01-01', lab: 'L', facility: 'F', status: 'released' as const, coa: [], aliases: [] }
-    store.set((s) => ({ batches: [...s.batches, flat] }))
-    expect(resolveBatch('ZZ-2601-WL01')?.record.batch).toBe('ZZ2601WL01')
+    expect(resolveBatch('ZZ-2601-WL01', [...BATCHES, flat])?.record.batch).toBe('ZZ2601WL01')
   })
 
   it('remote submit/track pass explicit tokens verbatim', async () => {
@@ -52,10 +53,10 @@ describe('UIBatch coverage edges (v8 branch mapping)', () => {
       batches: BATCHES.map((b) => (b.batch === 'PE-2610-WL01' ? { ...b, firstCheckedAt: undefined } : b)),
       settings: { ...store.get().settings, rateLimitPerMinute: 100 },
     }))
-    await lookupBatch('pe 2610 wl01')
+    await mockLookup('pe 2610 wl01')
     const first = store.get().batches.find((b) => b.batch === 'PE-2610-WL01')?.firstCheckedAt
     expect(first).toBeTruthy()
-    await lookupBatch('PE-2610-WL01')
+    await mockLookup('PE-2610-WL01')
     expect(store.get().batches.find((b) => b.batch === 'PE-2610-WL01')?.firstCheckedAt).toBe(first)
   })
 

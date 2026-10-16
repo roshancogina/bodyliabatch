@@ -8,7 +8,7 @@ import { Button } from './ui/button'
 import { LabReportDialog } from './LabReportDialog'
 import { downloadCertificate } from '../lib/pdf'
 import { toast } from '../lib/toast'
-import { useStore } from '../lib/store'
+import { SUPPORT_EMAIL } from '../data/catalog-static'
 
 interface Props {
   record: BatchRecord
@@ -18,7 +18,7 @@ interface Props {
 }
 
 export function BatchFacts({ record, product, kind, onReport }: Props) {
-  const supportEmail = useStore((s) => s.settings.supportEmail)
+  const supportEmail = SUPPORT_EMAIL
   const now = new Date()
   const expires = new Date(record.expires)
   const monthsLeft = differenceInMonths(expires, now)

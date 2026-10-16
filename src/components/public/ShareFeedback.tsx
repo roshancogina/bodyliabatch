@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Link2, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { feedbackSchema } from '../../lib/schemas'
 import { describeCaptchaError } from '../../lib/captcha'
-import { store } from '../../lib/store'
+
 import { toast } from '../../lib/toast'
 import { Button } from '../ui/button'
 import { Textarea } from '../ui/input'
@@ -35,8 +35,14 @@ export function ShareFeedback({ batch }: { batch: string }) {
     }
   }
 
-  const record = (helpful: boolean, comment?: string) =>
-    store.set((s) => ({ feedback: [...s.feedback, { at: new Date().toISOString(), batch, helpful, comment }] }))
+  const record = (helpful: boolean, comment?: string) => {
+    try {
+      const key = 'bodylia-feedback'
+      const prev = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown[]
+      prev.push({ at: new Date().toISOString(), batch, helpful, comment })
+      localStorage.setItem(key, JSON.stringify(prev))
+    } catch { /* private mode: feedback stays in memory only */ }
+  }
 
   return (
     <section aria-labelledby="fb-title" className="mt-14 grid gap-8 border-t border-mist pt-8 md:grid-cols-[auto_1fr] md:gap-16">

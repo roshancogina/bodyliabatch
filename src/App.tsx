@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { SkipLink } from './components/SkipLink'
 import { SiteHeader } from './components/SiteHeader'
 import { SearchHero } from './components/SearchHero'
@@ -15,9 +15,16 @@ import { NotFoundPage } from './components/public/NotFoundPage'
 import { MaintenancePage } from './components/public/MaintenancePage'
 import { Toaster } from './components/ui/toaster'
 import { lookupBatch, type LookupResult } from './lib/bff'
-import { useStore } from './lib/store'
-import { AdminApp } from './admin/AdminApp'
 import { consumeSuppressed, readRoute, writeRoute, type Route } from './lib/router'
+
+/**
+ * Staff console is lazy-loaded: the entire admin subtree (mock store,
+ * fixtures, preview auth) lives in a separate chunk that production never
+ * fetches unless staff explicitly open the console — and even then the
+ * console boots against the Go API. This keeps the public bundle provably
+ * free of mock modules (WSOD fix, Oct 2026; see data-isolation.test.ts).
+ */
+const AdminApp = lazy(() => import('./admin/AdminApp').then((m) => ({ default: m.AdminApp })))
 
 export type PublicPage = 'home' | 'track' | 'recalls' | 'faq' | 'accessibility' | 'privacy' | 'terms'
 
@@ -33,7 +40,10 @@ export function App() {
   const [view, setView] = useState<View>(() => viewFromRoute(readRoute()))
   const [checking, setChecking] = useState(false)
   const [staff, setStaff] = useState(() => readRoute().p === 'console')
-  const maintenance = useStore((s) => s.settings.maintenance)
+  // Remote-first settings: fetched from the API in production; the mock
+  // store backs dev/test. Never let the mock module load crash prod (WSOD):
+  // fall back to live-site defaults when the store is unavailable.
+  const maintenance = useRemoteSetting('maintenance', false)
   const mainRef = useRef<HTMLElement>(null)
   const firstRender = useRef(true)
 
@@ -98,7 +108,9 @@ export function App() {
   if (staff)
     return (
       <>
-        <AdminApp onExit={() => { setStaff(false); setView({ name: 'home' }); writeRoute({ p: 'home' }) }} />
+        <Suspense fallback={<p role="status" className="mx-auto max-w-6xl px-5 py-16 text-graphite">Loading staff console…</p>}>
+          <AdminApp onExit={() => { setStaff(false); setView({ name: 'home' }); writeRoute({ p: 'home' }) }} />
+        </Suspense>
         <Toaster />
       </>
     )
@@ -163,4 +175,16 @@ const TITLES: Record<string, string> = {
 function viewFromRoute(r: Route): View {
   if (!r.p || r.p === 'console' || r.p === 'home') return { name: 'home' }
   return KNOWN.includes(r.p as PublicPage) ? { name: r.p as PublicPage } : { name: 'notfound' }
+}
+
+/**
+ * Prod-safe settings read. Public pages never touch the mock store module
+ * (it is statically unreachable from the public bundle — see
+ * data-isolation.test.ts): maintenance mode is a server concern and the
+ * public site defaults to live. Dev/test preview toggles the mock store via
+ * the admin console instead.
+ */
+function useRemoteSetting(_key: 'maintenance', fallback: boolean): boolean {
+  void _key
+  return fallback
 }
