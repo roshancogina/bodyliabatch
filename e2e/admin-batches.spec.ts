@@ -31,6 +31,19 @@ test.describe('admin batches + aliases (console)', () => {
     })
     expect(res.status()).toBe(200)
     const body = await res.json()
+
+    // Login issues a temp token + requires2fa (every staff account has email
+    // 2FA mandatory). Complete the flow to get the full session JWT.
+    if (body.requires2fa) {
+      const vRes = await request.post(`${API}/api/auth/verify-2fa`, {
+        data: { tempToken: body.tempToken, code: body.code },
+      })
+      expect(vRes.status()).toBe(200)
+      const vBody = await vRes.json()
+      expect(vBody.token).toBeTruthy()
+      return vBody.token as string
+    }
+
     expect(body.token).toBeTruthy()
     return body.token as string
   }
