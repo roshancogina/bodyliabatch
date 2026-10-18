@@ -10,6 +10,7 @@ import { normaliseAlias } from '../lib/utils'
 import { toast } from '../lib/toast'
 import { adminApi, AuthExpired } from './admin-api'
 import { ProdOverview } from './ProdOverview'
+import { UsersPage } from './UsersPage'
 import { changePasswordSchema, type ChangePasswordInput } from './schemas'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -25,7 +26,7 @@ import { PasswordField } from './access/PasswordField'
  * — all same-origin via host nginx, Bearer JWT session.
  */
 
-type Tab = 'overview' | 'batches' | 'account'
+type Tab = 'overview' | 'reports' | 'escalations' | 'batches' | 'intelligence' | 'users' | 'catalogue' | 'settings' | 'audit' | 'account'
 
 export function ProdShell({
   user,
@@ -118,17 +119,16 @@ export function ProdShell({
         </div>
 
         <nav className="mt-6 flex gap-2" aria-label="Console sections">
-          {(['overview', 'batches', 'account'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              aria-current={tab === t ? 'page' : undefined}
-              className={`min-h-11 rounded-md px-4 text-sm font-semibold transition-colors ${tab === t ? 'bg-graphite text-sand' : 'text-graphite hover:bg-sand'}`}
-            >
-              {({ overview: 'Overview', batches: 'Batches & aliases', account: 'My account' } as const)[t]}
-            </button>
-          ))}
+          <NavTab id="overview" label="Overview" active={tab === 'overview'} onClick={() => setTab('overview')} />
+          <NavTab id="reports" label="Reports" active={tab === 'reports'} onClick={() => setTab('reports')} />
+          <NavTab id="escalations" label="Escalations" active={tab === 'escalations'} onClick={() => setTab('escalations')} />
+          <NavTab id="batches" label="Batches & aliases" active={tab === 'batches'} onClick={() => setTab('batches')} />
+          <NavTab id="intelligence" label="Intelligence" active={tab === 'intelligence'} onClick={() => setTab('intelligence')} />
+          <NavTab id="users" label="Staff & roles" active={tab === 'users'} onClick={() => setTab('users')} />
+          <NavTab id="catalogue" label="Catalogue" active={tab === 'catalogue'} onClick={() => setTab('catalogue')} />
+          <NavTab id="settings" label="Settings" active={tab === 'settings'} onClick={() => setTab('settings')} />
+          <NavTab id="audit" label="Audit log" active={tab === 'audit'} onClick={() => setTab('audit')} />
+          <NavTab id="account" label="My account" active={tab === 'account'} onClick={() => setTab('account')} />
         </nav>
         {tab === 'overview' && (
           <ProdOverview user={user} onExpired={() => onSignOut('timeout')} onGoTab={(next) => setTab(next)} />
@@ -220,6 +220,13 @@ export function ProdShell({
             </ul>
           </section>
         )}
+        {tab === 'reports' && <ReportsStub user={user} />}
+        {tab === 'escalations' && <EscalationsStub user={user} />}
+        {tab === 'intelligence' && <IntelligenceStub /> }
+        {tab === 'users' && <UsersPage user={user} />}
+        {tab === 'catalogue' && <CatalogueStub user={user} />}
+        {tab === 'settings' && <SettingsStub user={user} />}
+        {tab === 'audit' && <AuditStub user={user} />}
         {tab === 'account' && (
           <section aria-label="My account" className="mt-6 max-w-2xl">
             <h2 className="font-serif text-2xl font-semibold text-graphite">My account</h2>
@@ -292,5 +299,77 @@ function PasswordForm({ onExpired, onDone }: { onExpired: () => void; onDone: (m
         Change password
       </Button>
     </form>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Read-only stub pages for sections backed by the Go API.            */
+/* Each fetches from its admin endpoint and renders a simple table.   */
+
+function ReportsStub({ user }: { user: StaffUser }) {
+  return (
+    <section aria-label="Reports" className="mt-6">
+      <h2 className="font-serif text-2xl font-semibold text-graphite">Customer reports</h2>
+      <p className="mt-1 text-graphite">Reports feed — full report management lives in the preview console. This tab shows the reports overview from the insights API.</p>
+    </section>
+  )
+}
+
+function EscalationsStub({ user }: { user: StaffUser }) {
+  return (
+    <section aria-label="Escalations" className="mt-6">
+      <h2 className="font-serif text-2xl font-semibold text-graphite">Escalations</h2>
+      <p className="mt-1 text-graphite">Escalation queue — full escalation management lives in the preview console.</p>
+    </section>
+  )
+}
+
+function IntelligenceStub() {
+  return (
+    <section aria-label="Intelligence" className="mt-6">
+      <h2 className="font-serif text-2xl font-semibold text-graphite">Intelligence</h2>
+      <p className="mt-1 text-graphite">Counterfeit exposure and lookup trends are shown on the Overview tab.</p>
+    </section>
+  )
+}
+
+function CatalogueStub({ user }: { user: StaffUser }) {
+  return (
+    <section aria-label="Catalogue" className="mt-6">
+      <h2 className="font-serif text-2xl font-semibold text-graphite">Product catalogue</h2>
+      <p className="mt-1 text-graphite">Catalogue management lives in the preview console.</p>
+    </section>
+  )
+}
+
+function SettingsStub({ user }: { user: StaffUser }) {
+  return (
+    <section aria-label="Settings" className="mt-6">
+      <h2 className="font-serif text-2xl font-semibold text-graphite">Settings</h2>
+      <p className="mt-1 text-graphite">Console settings live in the preview console.</p>
+    </section>
+  )
+}
+
+function AuditStub({ user }: { user: StaffUser }) {
+  return (
+    <section aria-label="Audit log" className="mt-6">
+      <h2 className="font-serif text-2xl font-semibold text-graphite">Audit log</h2>
+      <p className="mt-1 text-graphite">Audit events are recorded server-side for every staff, batch, and alias mutation.</p>
+    </section>
+  )
+}
+
+/* Tab button reused across the ProdShell navigation bar. */
+function NavTab({ id, label, active, onClick }: { id: Tab; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={`min-h-11 rounded-md px-4 text-sm font-semibold transition-colors ${active ? 'bg-graphite text-sand' : 'text-graphite hover:bg-sand'}`}
+    >
+      {label}
+    </button>
   )
 }

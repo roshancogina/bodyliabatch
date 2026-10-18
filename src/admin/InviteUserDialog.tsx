@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { type Role, type StaffUser } from '../data/admin-seed'
 import { ROLE_DESCRIPTION, ROLE_LABEL } from '../data/roles'
-import { store, useStore } from '../lib/store'
+import { adminApi, AuthExpired } from './admin-api'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -12,8 +12,8 @@ import { toast } from '../lib/toast'
 import { inviteUserSchema, type InviteUserInput } from './schemas'
 
 export function InviteUserDialog({ user, open, onOpenChange }: { user: StaffUser; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const users = useStore((s) => s.users)
-  const schema = useMemo(() => inviteUserSchema(users.map((u) => u.email.toLowerCase())), [users])
+  const [existingEmails, setExistingEmails] = useState<string[]>([])
+  const schema = useMemo(() => inviteUserSchema(existingEmails), [existingEmails])
   const {
     register,
     handleSubmit,
@@ -21,14 +21,20 @@ export function InviteUserDialog({ user, open, onOpenChange }: { user: StaffUser
     formState: { errors },
   } = useForm<InviteUserInput>({ resolver: zodResolver(schema), defaultValues: { name: '', email: '', role: 'support' } })
 
-  const submit = handleSubmit((v) => {
-    store.set((s) => ({
-      users: [...s.users, { id: `u${Date.now()}`, name: v.name, email: v.email, role: v.role, status: 'invited', lastActive: new Date().toISOString(), mfa: false, invitedBy: user.name }],
-    }))
-    store.audit(user.name, 'Invited staff', v.email, ROLE_LABEL[v.role])
-    toast(`Invitation sent to ${v.email}`, { description: `${ROLE_LABEL[v.role]} · expires in 7 days` })
-    reset()
-    onOpenChange(false)
+  const submit = handleSubmit(async (v) => {
+    try {
+      await adminApi('/api/admin/staff', {
+        method: 'POST',
+        body: { name: v.name, email: v.email, role: v.role },
+      })
+      toast(`Invitation sent to ${v.email}`, { description: `${ROLE_LABEL[v.role]} · temporary password shown by the admin` })
+      reset()
+      onOpenChange(false)
+    } catch (e) {
+      if (!(e instanceof AuthExpired)) {
+        toast((e as Error).message)
+      }
+    }
   })
 
   return (

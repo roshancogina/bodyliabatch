@@ -11,3 +11,4 @@ playwright-report/
 coverage/
 .env.deploy
 
+backend-go/batchbodylia

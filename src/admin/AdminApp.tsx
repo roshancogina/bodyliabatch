@@ -4,6 +4,7 @@ import { clearSession } from '../lib/auth'
 import { PREVIEW_AUTH_ENABLED } from '../lib/runtime-env'
 import { SignIn } from './access/SignIn'
 import { TwoStep } from './access/TwoStep'
+import { EmailCodeStep } from './access/EmailCodeStep'
 import { ForgotPassword } from './access/ForgotPassword'
 import { ResetPassword } from './access/ResetPassword'
 import { SignedOut } from './access/SignedOut'
@@ -26,6 +27,7 @@ const SetupTwoStep = lazy(() => import('./access/SetupTwoStep').then((m) => ({ d
 export type AccessStep =
   | { step: 'signin' }
   | { step: 'twostep'; user: StaffUser }
+  | { step: 'emailCode'; user: StaffUser }
   | { step: 'forgot' }
   | { step: 'reset'; email: string }
   | { step: 'invite'; email: string }
@@ -56,6 +58,8 @@ export function AdminApp({ onExit, className }: { onExit?: () => void; className
       return <SignIn className={className} onExit={onExit} go={go} />
     case 'twostep':
       return <TwoStep className={className} user={s.user} go={go} />
+    case 'emailCode':
+      return <EmailCodeStep className={className} user={s.user} go={go} />
     case 'forgot':
       return <ForgotPassword className={className} go={go} />
     case 'reset':

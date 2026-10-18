@@ -79,6 +79,7 @@ func newRouter(db *sql.DB) *ginEngine {
 	}
 
 	r.POST("/api/auth/login", app.handleLogin)
+	r.POST("/api/auth/verify-2fa", app.handleVerifyTwoFactor)
 	r.POST("/api/auth/password", app.authMiddleware(), app.handleChangePassword)
 	admin := r.Group("/api/admin", app.authMiddleware())
 	{
@@ -89,6 +90,10 @@ func newRouter(db *sql.DB) *ginEngine {
 		admin.POST("/batches", app.handleAdminRegisterBatch)
 		admin.POST("/batches/:batch/aliases", app.handleAddAlias)
 		admin.DELETE("/batches/:batch/aliases/:alias", app.handleRemoveAlias)
+		admin.GET("/staff", app.handleAdminListStaff)
+		admin.POST("/staff", app.handleAdminCreateStaff)
+		admin.PATCH("/staff/:id", app.handleAdminUpdateStaff)
+		admin.DELETE("/staff/:id", app.handleAdminDeactivateStaff)
 	}
 	return r
 }

@@ -41,10 +41,14 @@ export function SignIn({ go, onExit, className }: { go: (s: AccessStep) => void;
       return
     }
     try {
-      const user = await signIn(email, password, captchaToken ?? undefined)
-      // Production API issues the session at login (JWT) — no second step.
-      // Preview keeps the 2-step verification flow.
-      go(PREVIEW_AUTH_ENABLED ? { step: 'twostep', user } : { step: 'shell', user })
+      const outcome = await signIn(email, password, captchaToken ?? undefined)
+      if (outcome.kind === 'twofa') {
+        // Production: email 2FA code required before the session is issued.
+        go({ step: 'emailCode', user: outcome.user })
+        return
+      }
+      // Preview (or complete): go straight to the appropriate next step.
+      go(PREVIEW_AUTH_ENABLED ? { step: 'twostep', user: outcome.user } : { step: 'shell', user: outcome.user })
     } catch (e) {
       const err = e as AuthError
       setError({ text: err.message, lockedUntil: err.lockedUntil })

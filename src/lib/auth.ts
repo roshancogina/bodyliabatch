@@ -134,16 +134,28 @@ async function findUser(email: string): Promise<StaffUser | undefined> {
 
 /** Step 1: password. Production → Go API (captcha + bcrypt + JWT session);
  *    preview → in-memory account check pending 2-step verification. */
-export async function signIn(email: string, password: string, captchaToken?: string): Promise<StaffUser> {
+export type SignInOutcome =
+  | { kind: 'complete'; user: StaffUser; token: string }
+  | { kind: 'twofa'; user: StaffUser; tempToken: string; email: string }
+
+export async function signIn(email: string, password: string, captchaToken?: string): Promise<SignInOutcome> {
   if (remoteAuth()) {
     try {
-      const out = await apiPost<{ token: string; user: StaffUser }>('/api/auth/login', {
+      const out = await apiPost<{ token?: string; user?: StaffUser; requires2fa?: boolean; tempToken?: string }>('/api/auth/login', {
         email,
         password,
         captchaToken: captchaToken ?? '',
       })
-      saveSession({ token: out.token, user: out.user })
-      return out.user
+      if (out.requires2fa && out.tempToken && out.user) {
+        // 2FA email code required: stash the temp token, do not issue a full session yet.
+        try { sessionStorage.setItem('bodylia.staff.temp2fa', out.tempToken) } catch {}
+        return { kind: 'twofa', user: out.user, tempToken: out.tempToken, email: out.user.email }
+      }
+      if (out.token && out.user) {
+        saveSession({ token: out.token, user: out.user })
+        return { kind: 'complete', user: out.user, token: out.token }
+      }
+      throw new AuthError('Could not reach the Bodylia API. Try again in a moment.')
     } catch (e) {
       const status = (e as { status?: number }).status
       if (status === 401 || status === 403) throw new AuthError((e as Error).message)
@@ -173,7 +185,18 @@ export async function signIn(email: string, password: string, captchaToken?: str
   if (user.status === 'deactivated') throw new AuthError('This account has been deactivated. Ask an administrator to restore it.', 'deactivated')
   if (user.status === 'invited') throw new AuthError('This account isn’t active yet. Use the link in your invitation email to set a password.', 'invited')
   attempts.delete(key)
-  return user
+  return { kind: 'complete', user, token: '' }
+}
+
+/** Step 2 (production): verify the 6-digit email code and issue the JWT session. */
+export async function verifyTwoFactor(tempToken: string, code: string): Promise<StaffUser> {
+  const out = await apiPost<{ token: string; user: StaffUser }>('/api/auth/verify-2fa', {
+    tempToken,
+    code,
+  })
+  saveSession({ token: out.token, user: out.user })
+  try { sessionStorage.removeItem('bodylia.staff.temp2fa') } catch {}
+  return out.user
 }
 
 /** Step 2 (preview only): authenticator code or one-time recovery code.
