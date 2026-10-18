@@ -1,7 +1,8 @@
 #!/bin/sh
 # Server-side deploy for batch.bodylia.in (runs ON 209.182.235.68 via CI SSH).
 # Env (from CI secrets, never stored on disk): DB_PASSWORD JWT_SECRET
-# CAPTCHA_SECRET PROD_ADMIN_EMAIL PROD_ADMIN_PASSWORD, IMAGE_TAG (commit SHA).
+# CAPTCHA_SECRET EMAILIT_API_KEY PROD_ADMIN_EMAIL PROD_ADMIN_PASSWORD,
+# IMAGE_TAG (commit SHA).
 # Steps: compose build -> stack up -> wait API healthy -> nginx install ->
 # certbot (first run only) -> smoke (canonical/spaced/mfg/unknown/malformed
 # + no-demo-users check).
@@ -11,6 +12,7 @@ cd "$DEPLOY_DIR"
 : "${DB_PASSWORD:?DB_PASSWORD is required}"
 : "${JWT_SECRET:?JWT_SECRET is required}"
 : "${CAPTCHA_SECRET:?CAPTCHA_SECRET is required}"
+: "${EMAILIT_API_KEY:?EMAILIT_API_KEY is required}"
 : "${PROD_ADMIN_EMAIL:?PROD_ADMIN_EMAIL is required}"
 : "${PROD_ADMIN_PASSWORD:?PROD_ADMIN_PASSWORD is required}"
 TAG="${IMAGE_TAG:-latest}"
@@ -18,10 +20,10 @@ COMPOSE="docker compose -f deploy/docker-compose.prod.yml"
 export DB_USER="${DB_USER:-bodylia}" DB_NAME="${DB_NAME:-bodyliabatch_prod}" TAG
 
 echo "==> 1/6 compose build (tag $TAG)"
-DB_PASSWORD="$DB_PASSWORD" JWT_SECRET="$JWT_SECRET" CAPTCHA_SECRET="$CAPTCHA_SECRET" PROD_ADMIN_EMAIL="$PROD_ADMIN_EMAIL"   PROD_ADMIN_PASSWORD="$PROD_ADMIN_PASSWORD" IMAGE_TAG="$TAG" $COMPOSE build
+DB_PASSWORD="$DB_PASSWORD" JWT_SECRET="$JWT_SECRET" CAPTCHA_SECRET="$CAPTCHA_SECRET" EMAILIT_API_KEY="$EMAILIT_API_KEY" PROD_ADMIN_EMAIL="$PROD_ADMIN_EMAIL"   PROD_ADMIN_PASSWORD="$PROD_ADMIN_PASSWORD" IMAGE_TAG="$TAG" $COMPOSE build
 
 echo "==> 2/6 stack up (migrations + prod bootstrap run on API boot)"
-DB_PASSWORD="$DB_PASSWORD" JWT_SECRET="$JWT_SECRET" CAPTCHA_SECRET="$CAPTCHA_SECRET" PROD_ADMIN_EMAIL="$PROD_ADMIN_EMAIL"   PROD_ADMIN_PASSWORD="$PROD_ADMIN_PASSWORD" IMAGE_TAG="$TAG" $COMPOSE up -d
+DB_PASSWORD="$DB_PASSWORD" JWT_SECRET="$JWT_SECRET" CAPTCHA_SECRET="$CAPTCHA_SECRET" EMAILIT_API_KEY="$EMAILIT_API_KEY" PROD_ADMIN_EMAIL="$PROD_ADMIN_EMAIL"   PROD_ADMIN_PASSWORD="$PROD_ADMIN_PASSWORD" IMAGE_TAG="$TAG" $COMPOSE up -d
 
 echo "==> 3/6 wait for API healthy (max 5 min)"
 for i in $(seq 1 30); do
