@@ -1,9 +1,9 @@
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { Check, Minus, UserPlus } from 'lucide-react'
+import { Check, Minus, UserPlus, Loader2 } from 'lucide-react'
 import { type Role, type StaffUser } from '../data/admin-seed'
 import { ROLE_DESCRIPTION, ROLE_LABEL } from '../data/roles'
-import { store, useStore } from '../lib/store'
+import { adminApi, AuthExpired } from './admin-api'
 import { Button } from '../components/ui/button'
 import { NativeSelect } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
@@ -16,14 +16,77 @@ const ROLES: Role[] = ['admin', 'quality', 'support']
 import { CAPABILITIES } from './users/capabilities'
 
 export function UsersPage({ user }: { user: StaffUser }) {
-  const users = useStore((s) => s.users)
+  const [users, setUsers] = useState<StaffUser[]>([])
   const [inviting, setInviting] = useState(false)
   const [roleChange, setRoleChange] = useState<{ user: StaffUser; to: Role } | null>(null)
   const [deactivating, setDeactivating] = useState<StaffUser | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
-  const update = (target: StaffUser, patch: Partial<StaffUser>, action: string, detail?: string) => {
-    store.set((s) => ({ users: s.users.map((u) => (u.id === target.id ? { ...u, ...patch } : u)) }))
-    store.audit(user.name, action, target.email, detail)
+  const load = useCallback(async () => {
+    try {
+      setUsers(await adminApi<StaffUser[]>(`/api/admin/staff`))
+    } catch (e) {
+      if (!(e instanceof AuthExpired)) {
+        toast('Could not load staff accounts.', { description: (e as Error).message })
+      }
+    }
+  }, [])
+
+  React.useEffect(() => {
+    void load()
+  }, [load])
+
+  const update = async (
+    target: StaffUser,
+    patch: Partial<StaffUser>,
+    action: string,
+    detail?: string,
+  ) => {
+    setBusyId(target.id)
+    try {
+      const updates: Record<string, unknown> = {}
+      if (patch.role !== undefined) updates.role = patch.role
+      if (patch.status !== undefined) updates.status = patch.status
+      await adminApi(`/api/admin/staff/${target.id}`, {
+        method: 'PATCH',
+        body: updates,
+      })
+      setUsers((cur) => cur.map((u) => (u.id === target.id ? { ...u, ...patch } : u)))
+      toast(`${target.name} updated`, { description: detail })
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const createStaff = async (input: { name: string; email: string; role: Role }) => {
+    setBusyId('create')
+    try {
+      await adminApi('/api/admin/staff', {
+        method: 'POST',
+        body: input,
+      })
+      void load()
+      toast(`Invitation sent to ${input.email}`, { description: `${ROLE_LABEL[input.role]} · temporary password shown by the admin` })
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const deactivateStaff = async (target: StaffUser) => {
+    setBusyId(target.id)
+    try {
+      await adminApi(`/api/admin/staff/${target.id}`, { method: 'DELETE' })
+      setUsers((cur) => cur.filter((u) => u.id !== target.id))
+      toast(`${target.name} deactivated`, { description: 'Signed out everywhere.' })
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusyId(null)
+    }
   }
 
   return (
@@ -32,7 +95,10 @@ export function UsersPage({ user }: { user: StaffUser }) {
         title="Staff & roles"
         description="Who can use the batch console and what they’re allowed to change."
         actions={
-          <Button onClick={() => setInviting(true)}>
+          <Button
+            onClick={() => setInviting(true)}
+            disabled={busyId === 'create'}
+          >
             <UserPlus aria-hidden="true" />
             Invite staff
           </Button>
@@ -69,36 +135,50 @@ export function UsersPage({ user }: { user: StaffUser }) {
                         <NativeSelect
                           id={`role-${u.id}`}
                           value={u.role}
-                          disabled={u.status === 'deactivated'}
-                          onChange={(e) => setRoleChange({ user: u, to: e.target.value as Role })}
-                          className="max-w-52"
+                          disabled={u.status === 'deactivated' || busyId === u.id}
+                          onChange={(e) => {
+                            setRoleChange({ user: u, to: e.target.value as Role })
+                          }}
                         >
-                          {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                          {ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABEL[r]}
+                            </option>
+                          ))}
                         </NativeSelect>
                       </>
                     )}
                   </td>
                   <td className="py-3 pr-4">
-                    {u.status === 'active' && <Badge tone="success">Active</Badge>}
-                    {u.status === 'invited' && <Badge tone="info">Invited</Badge>}
-                    {u.status === 'deactivated' && <Badge>Deactivated</Badge>}
+                    <Badge tone={u.status === 'active' ? 'success' : 'neutral'}>
+                      {u.status === 'active' ? 'Active' : u.status === 'invited' ? 'Invited' : 'Deactivated'}
+                    </Badge>
                   </td>
-                  <td className="py-3 pr-4 text-graphite">{formatDistanceToNowStrict(new Date(u.lastActive))} ago</td>
-                  <td className="py-3 text-right">
-                    {!self && u.status === 'active' && (
-                      <Button variant="ghost" size="sm" onClick={() => setDeactivating(u)}>
-                        Deactivate<span className="sr-only"> {u.name}</span>
-                      </Button>
-                    )}
-                    {u.status === 'deactivated' && (
-                      <Button variant="ghost" size="sm" onClick={() => { update(u, { status: 'active' }, 'Reactivated account'); toast(`${u.name} reactivated`) }}>
-                        Reactivate<span className="sr-only"> {u.name}</span>
-                      </Button>
-                    )}
-                    {u.status === 'invited' && (
-                      <Button variant="ghost" size="sm" onClick={() => { store.audit(user.name, 'Resent invitation', u.email); toast('Invitation resent', { description: `${u.email} · valid for 7 days` }) }}>
-                        Resend invite<span className="sr-only"> to {u.name}</span>
-                      </Button>
+                  <td className="py-3 pr-4 text-graphite">
+                    {u.lastActive ? formatDistanceToNowStrict(new Date(u.lastActive), { addSuffix: true }) : '—'}
+                  </td>
+                  <td className="py-3">
+                    {self ? (
+                      <span className="text-muted">—</span>
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRoleChange({ user: u, to: u.role === 'admin' ? 'quality' : 'admin' })}
+                          disabled={busyId === u.id}
+                        >
+                          {busyId === u.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                          {u.role === 'admin' ? 'Downgrade' : 'Promote'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => setDeactivating(u)}
+                          disabled={busyId === u.id}
+                        >
+                          Deactivate
+                        </Button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -144,13 +224,21 @@ export function UsersPage({ user }: { user: StaffUser }) {
         </div>
       </section>
 
-      <InviteUserDialog user={user} open={inviting} onOpenChange={setInviting} />
+      <InviteUserDialog
+        user={user}
+        open={inviting}
+        onOpenChange={(o) => {
+          if (!o) setInviting(false)
+          else setInviting(true)
+        }}
+      />
       <ChangeRoleDialog
         change={roleChange}
         onCancel={() => setRoleChange(null)}
-        onConfirm={() => {
-          const { user: u, to } = roleChange!
-          update(u, { role: to }, 'Changed role', `${ROLE_LABEL[u.role]} → ${ROLE_LABEL[to]}`)
+        onConfirm={async () => {
+          if (!roleChange) return
+          const { user: u, to } = roleChange
+          await update(u, { role: to }, 'Changed role', `${ROLE_LABEL[u.role]} → ${ROLE_LABEL[to]}`)
           toast(`${u.name} is now ${ROLE_LABEL[to]}`, { description: 'Takes effect on their next page load.' })
           setRoleChange(null)
         }}
@@ -159,15 +247,9 @@ export function UsersPage({ user }: { user: StaffUser }) {
         actor={user}
         target={deactivating}
         onClose={() => setDeactivating(null)}
-        onConfirm={(reassignTo) => {
-          const u = deactivating!
-          update(u, { status: 'deactivated' }, 'Deactivated account', reassignTo ? `Open reports → ${reassignTo}` : undefined)
-          if (reassignTo) {
-            store.get().reports.filter((r) => r.assignee === u.name && !r.status.startsWith('resolved')).forEach((r) =>
-              store.updateReport(r.reference, { assignee: reassignTo }, { by: user.name, kind: 'assign', text: `Reassigned to ${reassignTo} (${u.name} deactivated)` }),
-            )
-          }
-          toast(`${u.name} deactivated`, { description: 'Signed out everywhere.' })
+        onConfirm={async (_reassignTo) => {
+          if (!deactivating) return
+          await deactivateStaff(deactivating)
           setDeactivating(null)
         }}
       />

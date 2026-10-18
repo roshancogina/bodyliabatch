@@ -62,7 +62,7 @@ describe('production auth (Go API)', () => {
       ({ ok: true, status: 200, json: async () => ({ token: 'jwt-abc', user: USER }) }) as Response,
     )
     vi.stubGlobal('fetch', fetchMock)
-    const user = await signIn('roshan@bodylia.in', 'gloscon10', 'captcha-token')
+    const { user } = await signIn('roshan@bodylia.in', 'gloscon10', 'captcha-token')
     expect(user.email).toBe('roshan@bodylia.in')
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toContain('/api/auth/login')
