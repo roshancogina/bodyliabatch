@@ -20,18 +20,23 @@ func adminToken(t *testing.T, r *ginEngine) string {
 	decodeBody(t, w, &out)
 
 	// Login now issues a temp token + requires2fa for every staff account
-	// (email 2FA is mandatory). Complete the flow by verifying the parked
-	// code (same package, so pendingCodes is directly addressable).
+	// (email 2FA is mandatory). In test mode the login response carries the
+	// plaintext code (test-only concession); the server stores only the
+	// SHA-256 hash. Complete the flow by verifying that code.
 	if requires2fa, _ := out["requires2fa"].(bool); requires2fa {
 		tempToken, _ := out["tempToken"].(string)
+		code, _ := out["code"].(string)
+		if code == "" {
+			t.Fatalf("login response did not return a test 2fa code: %v", out)
+		}
 		twoFactorStore.Lock()
-		pc := pendingCodes[tempToken]
-		twoFactorStore.Unlock()
-		if pc == nil {
+		if _, ok := pendingCodes[tempToken]; !ok {
+			twoFactorStore.Unlock()
 			t.Fatalf("no pending 2fa code for temp token: %v", out)
 		}
+		twoFactorStore.Unlock()
 		w = doReq(t, r, "POST", "/api/auth/verify-2fa",
-			map[string]any{"tempToken": tempToken, "code": pc.Code}, "")
+			map[string]any{"tempToken": tempToken, "code": code}, "")
 		if w.Code != 200 {
 			t.Fatalf("verify-2fa = %d: %s", w.Code, w.Body.String())
 		}

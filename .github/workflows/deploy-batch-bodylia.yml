@@ -11,6 +11,7 @@ name: deploy-batch-bodylia
 #   DB_PASSWORD       — production Postgres password (vault-generated)
 #   JWT_SECRET        — production JWT secret (32+ random chars)
 #   CAPTCHA_SECRET    — production captcha HMAC secret (32+ random chars)
+#   EMAILIT_API_KEY   — EmailIt v2 API key (posts to https://api.emailit.com/v2/emails)
 #   PROD_ADMIN_EMAIL  — roshan@bodylia.in
 #   PROD_ADMIN_PASSWORD — production admin password (vault-generated)
 # Optional vars: PROD_ADMIN_NAME (default "Bodylia Admin").
@@ -137,7 +138,8 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           CAPTCHA_SECRET: ${{ secrets.CAPTCHA_SECRET }}
+          EMAILIT_API_KEY: ${{ secrets.EMAILIT_API_KEY }}
           PROD_ADMIN_EMAIL: ${{ secrets.PROD_ADMIN_EMAIL }}
           PROD_ADMIN_PASSWORD: ${{ secrets.PROD_ADMIN_PASSWORD }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DB_PASSWORD='$DB_PASSWORD' JWT_SECRET='$JWT_SECRET' CAPTCHA_SECRET='$CAPTCHA_SECRET' PROD_ADMIN_EMAIL='$PROD_ADMIN_EMAIL' PROD_ADMIN_PASSWORD='$PROD_ADMIN_PASSWORD' IMAGE_TAG='${{ github.sha }}' bash $DEPLOY_DIR/deploy/server-deploy.sh"
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DB_PASSWORD='$DB_PASSWORD' JWT_SECRET='$JWT_SECRET' CAPTCHA_SECRET='$CAPTCHA_SECRET' EMAILIT_API_KEY='$EMAILIT_API_KEY' PROD_ADMIN_EMAIL='$PROD_ADMIN_EMAIL' PROD_ADMIN_PASSWORD='$PROD_ADMIN_PASSWORD' IMAGE_TAG='${{ github.sha }}' bash $DEPLOY_DIR/deploy/server-deploy.sh"

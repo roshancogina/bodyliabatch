@@ -29,6 +29,7 @@ func main() {
 		requireEnv("DB_NAME")
 		requireEnv("DB_PASSWORD")
 		requireEnv("ALLOWED_ORIGINS")
+		requireEnv("EMAILIT_API_KEY")
 		dbName := requireEnv("DB_NAME")
 		if isTestDatabase(dbName) {
 			log.Fatalf("FATAL: production DB_NAME must not look like a test database (got %q)", dbName)

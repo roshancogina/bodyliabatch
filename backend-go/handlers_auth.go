@@ -1,11 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -17,11 +23,12 @@ import (
 )
 
 // twoFactorCode holds a pending email verification code keyed by temp token.
+// The code is stored hashed (SHA-256) so server memory never holds plaintext codes.
 type twoFactorCode struct {
-	Code   string
-	UserID string
-	Email  string
-	Expire time.Time
+	CodeHash string
+	UserID   string
+	Email    string
+	Expire   time.Time
 }
 
 var (
@@ -85,22 +92,34 @@ func (a *App) handleLogin(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Could not create verification session"})
 		return
 	}
-	// Generate 6-digit email code and park it server-side (simulates email
-	// delivery — no SMTP in this deploy; the code is logged for ops visibility).
+	// Generate 6-digit email code, park its hash server-side, then deliver
+	// the plaintext code by email (EmailIt). The temp token authorizes only
+	// the single-use verify-2FA step that follows.
 	code := fmt.Sprintf("%06d", rand.Intn(1_000_000))
+	codeHash := hashTwoFactorCode(code)
 	twoFactorStore.Lock()
 	pendingCodes[tempToken] = &twoFactorCode{
-		Code:   code,
-		UserID: u.ID,
-		Email:  u.Email,
-		Expire: time.Now().Add(10 * time.Minute),
+		CodeHash: codeHash,
+		UserID:   u.ID,
+		Email:    u.Email,
+		Expire:   time.Now().Add(10 * time.Minute),
 	}
 	twoFactorStore.Unlock()
-	log.Printf("2fa-code: email=%s code=%s (expires 10 min)", u.Email, code)
+
+	if err := deliverTwoFactorCode(u.Email, code); err != nil {
+		// Fail closed: if the code can't be delivered, no session may use it.
+		twoFactorStore.Lock()
+		delete(pendingCodes, tempToken)
+		twoFactorStore.Unlock()
+		log.Printf("2fa-email: email=%s delivery failed: %v", u.Email, err)
+		c.JSON(500, gin.H{"error": "Verification email could not be sent. Try again."})
+		return
+	}
+
 	_, _ = a.store.db.Exec(`UPDATE staff_users SET last_active=NOW() WHERE id=$1`, u.ID)
 	resp := gin.H{"requires2fa": true, "tempToken": tempToken, "email": u.Email, "user": u}
 	if isTest() {
-		// Test-only concession: return the parked code so e2e tests can
+		// Test-only concession: return the parked code so tests can
 		// complete the email-2FA flow without access to server memory.
 		resp["code"] = code
 	}
@@ -138,10 +157,9 @@ func (a *App) handleVerifyTwoFactor(c *gin.Context) {
 		c.JSON(401, gin.H{"error": "Verification session expired — sign in again."})
 		return
 	}
-	// Constant-time compare to avoid timing leaks.
-	input := []byte(in.Code)
-	expected := []byte(pc.Code)
-	if len(input) != len(expected) || subtleCompare(input, expected) != 0 {
+	// Constant-time compare against the hashed code to avoid timing leaks.
+	inputHash := hashTwoFactorCode(in.Code)
+	if subtleCompare([]byte(inputHash), []byte(pc.CodeHash)) != 0 {
 		c.JSON(401, gin.H{"error": "That code did not work. Check your email and try again."})
 		return
 	}
@@ -191,6 +209,66 @@ func subtleCompare(a, b []byte) int {
 		return 0
 	}
 	return 1
+}
+
+// hashTwoFactorCode returns the SHA-256 hex digest of a 6-digit code so
+// server memory never holds a plaintext verification code.
+func hashTwoFactorCode(code string) string {
+	sum := sha256.Sum256([]byte(code))
+	return hex.EncodeToString(sum[:])
+}
+
+// emailItPayload matches the EmailIt v2 /emails request contract:
+// POST https://api.emailit.com/v2/emails  Authorization: Bearer <API_KEY>
+type emailItPayload struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Subject string `json:"subject"`
+	HTML    string `json:"html"`
+}
+
+// deliverTwoFactorCode emails the 6-digit verification code via EmailIt.
+// In test mode delivery is skipped entirely (the code comes back in the
+// login response). Outside of test, a missing EMAILIT_API_KEY degrades to
+// an ops log so local development keeps working; production must provide
+// the key (enforced at boot by main.go) and delivery failure fails the
+// login closed — a code that never arrived can never verify.
+func deliverTwoFactorCode(to, code string) error {
+	if isTest() {
+		return nil
+	}
+	apiKey := strings.TrimSpace(os.Getenv("EMAILIT_API_KEY"))
+	if apiKey == "" {
+		log.Printf("2fa-code: email=%s code=%s (expires 10 min) [EMAILIT_API_KEY unset]", to, code)
+		return nil
+	}
+	payload := emailItPayload{
+		From:    "Bodylia Verify <verify@bodylia.in>",
+		To:      to,
+		Subject: "Your Bodylia sign-in code",
+		HTML:    fmt.Sprintf("<p>Your Bodylia verification code is <strong>%s</strong>.</p><p>It expires in 10 minutes. If you didn’t request this, ignore this email.</p>", code),
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, "https://api.emailit.com/v2/emails", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("emailit request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("emailit %s: %s", resp.Status, strings.TrimSpace(string(b)))
+	}
+	io.Copy(io.Discard, resp.Body)
+	return nil
 }
 
 // AuthMiddleware: Bearer JWT → staff user in context.
