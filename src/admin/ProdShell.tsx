@@ -10,6 +10,7 @@ import { normaliseAlias } from '../lib/utils'
 import { toast } from '../lib/toast'
 import { adminApi, AuthExpired } from './admin-api'
 import { ProdOverview } from './ProdOverview'
+import { ProdRegisterBatchDialog } from './ProdRegisterBatchDialog'
 import { UsersPage } from './UsersPage'
 import { changePasswordSchema, type ChangePasswordInput } from './schemas'
 import { Button } from '../components/ui/button'
@@ -40,6 +41,7 @@ export function ProdShell({
   className?: string
 }) {
   const [tab, setTab] = useState<Tab>('overview')
+  const [registering, setRegistering] = useState(false)
   const [batches, setBatches] = useState<BatchRecord[] | null>(null)
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
@@ -135,20 +137,25 @@ export function ProdShell({
         )}
         {tab === 'batches' && (
           <section aria-label="Batches and aliases" className="mt-6">
-            <form
-              className="flex flex-wrap items-end gap-3"
-              onSubmit={(e) => {
-                e.preventDefault()
-                setSearch(q.trim())
-              }}
-            >
-              <FormField id="batch-q" label="Search batches (canonical code or vendor code)" className="min-w-72 flex-1">
-                {(a) => <Input {...a} value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. FR-2610-WL01 or 2K26005" />}
-              </FormField>
-              <Button type="submit" variant="outline">
-                <Search aria-hidden="true" className="mr-2 h-4 w-4" /> Search
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <form
+                className="flex min-w-0 flex-1 flex-wrap items-end gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  setSearch(q.trim())
+                }}
+              >
+                <FormField id="batch-q" label="Search batches (canonical code or vendor code)" className="min-w-72 flex-1">
+                  {(a) => <Input {...a} value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. FR-2610-WL01 or 2K26005" />}
+                </FormField>
+                <Button type="submit" variant="outline">
+                  <Search aria-hidden="true" className="mr-2 h-4 w-4" /> Search
+                </Button>
+              </form>
+              <Button onClick={() => setRegistering(true)}>
+                <Plus aria-hidden="true" className="mr-2 h-4 w-4" /> Register batch
               </Button>
-            </form>
+            </div>
 
             {listError && (
               <p role="alert" className="mt-4 rounded-md border-2 border-error bg-error-bg p-3 text-sm text-error">{listError}</p>
@@ -249,6 +256,17 @@ export function ProdShell({
           </section>
         )}
       </div>
+
+      <ProdRegisterBatchDialog
+        open={registering}
+        onOpenChange={setRegistering}
+        onRegistered={(b) => {
+          // Jump the search to the freshly registered batch so it shows up.
+          setQ(b)
+          setSearch(b)
+          void load(b)
+        }}
+      />
     </div>
   )
 }

@@ -13,6 +13,7 @@ import { inviteUserSchema, type InviteUserInput } from './schemas'
 
 export function InviteUserDialog({ user, open, onOpenChange }: { user: StaffUser; open: boolean; onOpenChange: (o: boolean) => void }) {
   const [existingEmails, setExistingEmails] = useState<string[]>([])
+  const [created, setCreated] = useState<{ email: string; password: string } | null>(null)
   const schema = useMemo(() => inviteUserSchema(existingEmails), [existingEmails])
   const {
     register,
@@ -23,13 +24,15 @@ export function InviteUserDialog({ user, open, onOpenChange }: { user: StaffUser
 
   const submit = handleSubmit(async (v) => {
     try {
-      await adminApi('/api/admin/staff', {
+      const res = await adminApi<{ temporaryPassword?: string }>('/api/admin/staff', {
         method: 'POST',
         body: { name: v.name, email: v.email, role: v.role },
       })
-      toast(`Invitation sent to ${v.email}`, { description: `${ROLE_LABEL[v.role]} · temporary password shown by the admin` })
+      toast(`Invitation created for ${v.email}`)
       reset()
-      onOpenChange(false)
+      // There is no invite-email in this deploy — the one-time password comes
+      // back here so the inviter can deliver it. Show it once, in-dialog.
+      setCreated({ email: v.email, password: res.temporaryPassword ?? '' })
     } catch (e) {
       if (!(e instanceof AuthExpired)) {
         toast((e as Error).message)
@@ -38,8 +41,23 @@ export function InviteUserDialog({ user, open, onOpenChange }: { user: StaffUser
   })
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o) }}>
-      <DialogContent title="Invite staff" description="They’ll get an email to set a password. The invitation expires in 7 days." className="max-w-lg">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); setCreated(null) }; onOpenChange(o) }}>
+      <DialogContent title="Invite staff" description="Create a staff account. You’ll receive a one-time password to share with them — it is shown only once." className="max-w-lg">
+        {created ? (
+          <div className="flex flex-col gap-5">
+            <p role="status" className="text-sm text-graphite">
+              Account created for <span className="font-semibold">{created.email}</span>. Share this temporary
+              password with them — they’ll keep it for their first sign-in and then set their own. You won’t be
+              able to see it again.
+            </p>
+            <code className="tabular select-all rounded-md border border-stone bg-ivory px-3 py-2 text-base font-semibold tracking-wide text-graphite">
+              {created.password || '(not returned — check the API logs)'}
+            </code>
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button type="button" onClick={() => { setCreated(null); onOpenChange(false) }}>Done</Button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={submit} noValidate className="flex flex-col gap-5">
           <FormField id="iu-name" label="Full name" error={errors.name?.message}>
             {(a) => <Input {...a} {...register('name')} autoComplete="off" />}
@@ -67,6 +85,7 @@ export function InviteUserDialog({ user, open, onOpenChange }: { user: StaffUser
             <Button type="submit">Send invitation</Button>
           </div>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   )
