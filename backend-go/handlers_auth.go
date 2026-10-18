@@ -98,7 +98,7 @@ func (a *App) handleLogin(c *gin.Context) {
 	twoFactorStore.Unlock()
 	log.Printf("2fa-code: email=%s code=%s (expires 10 min)", u.Email, code)
 	_, _ = a.store.db.Exec(`UPDATE staff_users SET last_active=NOW() WHERE id=$1`, u.ID)
-	resp := gin.H{"requires2fa": true, "tempToken": tempToken, "email": u.Email}
+	resp := gin.H{"requires2fa": true, "tempToken": tempToken, "email": u.Email, "user": u}
 	if isTest() {
 		// Test-only concession: return the parked code so e2e tests can
 		// complete the email-2FA flow without access to server memory.
