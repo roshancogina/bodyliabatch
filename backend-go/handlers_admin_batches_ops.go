@@ -15,12 +15,15 @@ import (
 )
 
 // PATCH /api/admin/batches/:batch — edit release details (not status).
+// A ≥20 character reason is REQUIRED: every edit is written to the audit log
+// and customers may already be reading these details on the result page.
 func (a *App) handleAdminEditBatch(c *gin.Context) {
 	var in struct {
 		Manufactured string `json:"manufactured"`
 		Expires      string `json:"expires"`
 		Facility     string `json:"facility"`
 		Lab          string `json:"lab"`
+		Reason       string `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(400, gin.H{"error": "Invalid request body."})
@@ -32,14 +35,21 @@ func (a *App) handleAdminEditBatch(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "Batch not found."})
 		return
 	}
+	reason := strings.TrimSpace(in.Reason)
+	if len(reason) < 20 {
+		c.JSON(400, gin.H{"error": "Explain the correction in at least 20 characters — this edit is recorded in the audit log."})
+		return
+	}
 	mfg, err1 := time.Parse("2006-01-02", in.Manufactured)
 	exp, err2 := time.Parse("2006-01-02", in.Expires)
 	if err1 != nil || err2 != nil || !exp.After(mfg) {
 		c.JSON(400, gin.H{"error": "Expiry date must be after the manufacture date."})
 		return
 	}
-	if mfg.After(time.Now()) {
-		c.JSON(400, gin.H{"error": "Manufacture date can’t be in the future."})
+	// Typo guard only: launch batches are legitimately manufactured up to a
+	// month or two ahead of first sale (pre-stocked release dates).
+	if mfg.After(time.Now().AddDate(1, 0, 0)) {
+		c.JSON(400, gin.H{"error": "Manufacture date can’t be more than a year in the future."})
 		return
 	}
 	if strings.TrimSpace(in.Facility) == "" || strings.TrimSpace(in.Lab) == "" {
@@ -55,7 +65,7 @@ func (a *App) handleAdminEditBatch(c *gin.Context) {
 	u := currentUser(c)
 	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
 		VALUES ($1,'Updated batch',$2,$3)`, u.Name, batch,
-		"manufactured "+in.Manufactured+", expires "+in.Expires)
+		"manufactured "+in.Manufactured+", expires "+in.Expires+"; "+reason)
 	updated, _, _, _ := a.store.ResolveBatch(batch)
 	c.JSON(200, updated)
 }
@@ -95,6 +105,11 @@ func (a *App) handleAdminRecallBatch(c *gin.Context) {
 
 // DELETE /api/admin/batches/:batch/recall — restore after a mistaken recall.
 func (a *App) handleAdminUnrecallBatch(c *gin.Context) {
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&in) // body is optional
+	reason := strings.TrimSpace(in.Reason)
 	batch := normaliseBatch(c.Param("batch"))
 	res, err := a.store.db.Exec(`UPDATE batches SET status='released', recall_reason=NULL,
 		updated_at=NOW() WHERE batch=$1 AND status='recalled'`, batch)
@@ -107,9 +122,12 @@ func (a *App) handleAdminUnrecallBatch(c *gin.Context) {
 		c.JSON(409, gin.H{"error": "Batch not found or not recalled."})
 		return
 	}
+	if reason == "" {
+		reason = "recall lifted"
+	}
 	u := currentUser(c)
 	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
-		VALUES ($1,'Restored batch',$2,'recall lifted')`, u.Name, batch)
+		VALUES ($1,'Restored batch',$2,$3)`, u.Name, batch, reason)
 	rec, _, _, _ := a.store.ResolveBatch(batch)
 	c.JSON(200, rec)
 }
@@ -176,8 +194,10 @@ func (a *App) handleAdminImportBatches(c *gin.Context) {
 			c.JSON(400, gin.H{"error": "Row " + itoa(row) + ": expiry date must be after the manufacture date."})
 			return
 		}
-		if mfg.After(time.Now()) {
-			c.JSON(400, gin.H{"error": "Row " + itoa(row) + ": manufacture date can’t be in the future."})
+		// Typo guard only — pre-stocked launch batches may be manufactured
+		// ahead of first sale (same rule as the single-batch edit).
+		if mfg.After(time.Now().AddDate(1, 0, 0)) {
+			c.JSON(400, gin.H{"error": "Row " + itoa(row) + ": manufacture date can’t be more than a year in the future."})
 			return
 		}
 		if strings.TrimSpace(r.Facility) == "" || strings.TrimSpace(r.Lab) == "" {

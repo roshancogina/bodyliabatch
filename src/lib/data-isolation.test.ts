@@ -65,6 +65,8 @@ describe('frontend data isolation', () => {
       'prod/ProdCataloguePage.tsx',
       'prod/ProdSettingsPage.tsx',
       'prod/ProdAuditPage.tsx',
+      'prod/ProdBatchDialogs.tsx',
+      'prod/ProdCatalogueDialogs.tsx',
     ]
     const banned = /from\s+['"](\.\.\/)*(data\/(products|admin-seed|mock-batches)|lib\/store)['"]/
     const offenders: string[] = []

@@ -232,3 +232,42 @@ func randomPassword(n int) string {
 	}
 	return string(out)
 }
+
+// PATCH /api/admin/me — update your own profile (name). The display name is
+// what lands in the audit trail, so changes are audited; role, status and
+// email can only be changed by an admin via /api/admin/staff/:id.
+func (a *App) handleUpdateMe(c *gin.Context) {
+	u := currentUser(c)
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(400, gin.H{"error": "Invalid request body."})
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	if len(name) < 2 || len(name) > 80 {
+		c.JSON(400, gin.H{"error": "Name must be 2–80 characters."})
+		return
+	}
+	res, err := a.store.db.Exec(`UPDATE staff_users SET name=$1 WHERE lower(email)=lower($2)`, name, u.Email)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Could not update profile."})
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.JSON(404, gin.H{"error": "Account not found."})
+		return
+	}
+	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
+		VALUES ($1,'Updated profile',$2,$3)`, name, u.Email, "name: "+name)
+	var out StaffUserOut
+	var la sql.NullTime
+	_ = a.store.db.QueryRow(`SELECT id, name, email, role, status, mfa, last_active
+		FROM staff_users WHERE lower(email)=lower($1)`, u.Email).
+		Scan(&out.ID, &out.Name, &out.Email, &out.Role, &out.Status, &out.MFA, &la)
+	if la.Valid {
+		out.LastActive = &la.Time
+	}
+	c.JSON(200, out)
+}

@@ -151,24 +151,38 @@ func TestAdminBatchEditAndRecall(t *testing.T) {
 	r := testRouter(t)
 	tok := adminToken(t, r)
 
-	// edit a seeded released batch (005 first production batch).
+	// edit a seeded released batch (005 first production batch). A ≥20 char
+	// reason is REQUIRED — it lands in the audit log. The NOV-2026 manufacture
+	// date is ahead of today but within the 1-year typo-guard window: launch
+	// batches are pre-stocked, so this MUST be accepted.
 	w := doReq(t, r, "PATCH", "/api/admin/batches/PE-2610-WL01",
-		map[string]any{"manufactured": "2026-10-01", "expires": "2028-04-30",
-			"facility": "Unit 2, Baddi, Himachal Pradesh", "lab": "Eurofins, Bengaluru"}, tok)
+		map[string]any{"manufactured": "2026-11-01", "expires": "2028-04-30",
+			"facility": "Unit 2, Baddi, Himachal Pradesh", "lab": "Eurofins, Bengaluru",
+			"reason": "Contract test: correcting facility and lab details for the CMS suite."}, tok)
 	if w.Code != 200 {
 		t.Fatalf("edit = %d: %s", w.Code, w.Body.String())
+	}
+	// short / missing reason rejected — audit trail must explain every edit.
+	w = doReq(t, r, "PATCH", "/api/admin/batches/PE-2610-WL01",
+		map[string]any{"manufactured": "2026-10-01", "expires": "2028-04-30",
+			"facility": "Unit 2, Baddi, Himachal Pradesh", "lab": "Eurofins, Bengaluru",
+			"reason": "too short"}, tok)
+	if w.Code != 400 {
+		t.Fatalf("short reason = %d, want 400", w.Code)
 	}
 	// bad dates
 	w = doReq(t, r, "PATCH", "/api/admin/batches/PE-2610-WL01",
 		map[string]any{"manufactured": "2028-01-01", "expires": "2027-01-01",
-			"facility": "X", "lab": "Y"}, tok)
+			"facility": "X", "lab": "Y",
+			"reason": "Contract test: this update should fail date validation cleanly."}, tok)
 	if w.Code != 400 {
 		t.Fatalf("bad dates = %d, want 400", w.Code)
 	}
 	// missing batch
 	w = doReq(t, r, "PATCH", "/api/admin/batches/ZZ-9999-9Z99",
 		map[string]any{"manufactured": "2026-01-01", "expires": "2027-01-01",
-			"facility": "X", "lab": "Y"}, tok)
+			"facility": "X", "lab": "Y",
+			"reason": "Contract test: missing batch must 404 before validation."}, tok)
 	if w.Code != 404 {
 		t.Fatalf("missing edit = %d, want 404", w.Code)
 	}
@@ -464,4 +478,220 @@ func TestAdminStaffUpdateAndDeactivate(t *testing.T) {
 	if w.Code != 400 {
 		t.Fatalf("empty patch = %d, want 400", w.Code)
 	}
+}
+
+// Catalogue full CRUD: create / edit / archive / hard-delete products and
+// sites, with validation, referential guards and audit events.
+func TestAdminCatalogueCRUD(t *testing.T) {
+	r := testRouter(t)
+	tok := adminToken(t, r)
+	// resetTestDB reseeds but never wipes products/sites/audit — clear any
+	// leftovers from previous runs so this test is re-runnable.
+	db := mustTestDB(t)
+	_, _ = db.Exec(`DELETE FROM batch_aliases WHERE batch IN (SELECT batch FROM batches WHERE product_code='ZT')`)
+	_, _ = db.Exec(`DELETE FROM products WHERE code='ZT'`)
+	_, _ = db.Exec(`DELETE FROM sites WHERE name='QA Test Facility, Goa'`)
+	_, _ = db.Exec(`DELETE FROM audit_log WHERE target='ZT' OR target LIKE 'QA Test Facility%'`)
+
+	// --- products: create ---
+	w := doReq(t, r, "POST", "/api/admin/catalogue/products", map[string]any{
+		"code": "zt", "name": "QA Test Product", "claim": "For contract-test catalogue flows.",
+		"format": "30 veg. HPMC capsules", "shelfLifeMonths": 24, "image": "https://example.com/qa.png",
+	}, tok)
+	if w.Code != 201 {
+		t.Fatalf("create product = %d: %s", w.Code, w.Body.String())
+	}
+	// duplicate → 409
+	w = doReq(t, r, "POST", "/api/admin/catalogue/products", map[string]any{
+		"code": "ZT", "name": "QA Test Product 2", "claim": "For contract-test catalogue flows.",
+		"format": "30 veg. HPMC capsules", "shelfLifeMonths": 24, "image": "https://example.com/qa2.png",
+	}, tok)
+	if w.Code != 409 {
+		t.Fatalf("dup product = %d, want 409: %s", w.Code, w.Body.String())
+	}
+	// validation failures
+	for _, bad := range []map[string]any{
+		{"code": "ZTZ", "name": "QA Test Product", "claim": "For contract-test catalogue flows.", "format": "30 capsules", "shelfLifeMonths": 24, "image": "https://example.com/x.png"},
+		{"code": "QA", "name": "Q", "claim": "For contract-test catalogue flows.", "format": "30 capsules", "shelfLifeMonths": 24, "image": "https://example.com/x.png"},
+		{"code": "QA", "name": "QA Product", "claim": "short", "format": "30 capsules", "shelfLifeMonths": 24, "image": "https://example.com/x.png"},
+		{"code": "QA", "name": "QA Product", "claim": "For contract-test catalogue flows.", "format": "30 capsules", "shelfLifeMonths": 3, "image": "https://example.com/x.png"},
+		{"code": "QA", "name": "QA Product", "claim": "For contract-test catalogue flows.", "format": "30 capsules", "shelfLifeMonths": 24, "image": "http://insecure.example.com/x.png"},
+	} {
+		w = doReq(t, r, "POST", "/api/admin/catalogue/products", bad, tok)
+		if w.Code != 400 {
+			t.Fatalf("invalid product %v = %d, want 400: %s", bad["code"], w.Code, w.Body.String())
+		}
+	}
+
+	// --- products: edit fields (audited) ---
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/products/ZT",
+		map[string]any{"name": "QA Test Product v2", "shelfLifeMonths": 36}, tok)
+	if w.Code != 200 {
+		t.Fatalf("edit product = %d: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/products/ZT",
+		map[string]any{"name": "x"}, tok)
+	if w.Code != 400 {
+		t.Fatalf("invalid edit = %d, want 400", w.Code)
+	}
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/products/ZZ",
+		map[string]any{"name": "Missing Product"}, tok)
+	if w.Code != 404 {
+		t.Fatalf("edit missing = %d, want 404", w.Code)
+	}
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/products/ZT", map[string]any{}, tok)
+	if w.Code != 400 {
+		t.Fatalf("empty edit = %d, want 400", w.Code)
+	}
+
+	// --- products: archive (soft delete) still works ---
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/products/ZT", map[string]any{"archived": true}, tok)
+	if w.Code != 200 {
+		t.Fatalf("archive product = %d: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/products/ZT", map[string]any{"archived": false}, tok)
+	if w.Code != 200 {
+		t.Fatalf("unarchive product = %d: %s", w.Code, w.Body.String())
+	}
+	// referenced product refuses hard delete (409 → archive instead)
+	w = doReq(t, r, "DELETE", "/api/admin/catalogue/products/PE", nil, tok)
+	if w.Code != 409 {
+		t.Fatalf("delete referenced = %d, want 409: %s", w.Code, w.Body.String())
+	}
+	// unreferenced product deletes cleanly
+	w = doReq(t, r, "DELETE", "/api/admin/catalogue/products/ZT", nil, tok)
+	if w.Code != 200 {
+		t.Fatalf("delete product = %d: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "DELETE", "/api/admin/catalogue/products/ZT", nil, tok)
+	if w.Code != 404 {
+		t.Fatalf("delete missing = %d, want 404", w.Code)
+	}
+
+	// --- sites: create / edit / delete ---
+	w = doReq(t, r, "POST", "/api/admin/catalogue/sites", map[string]any{
+		"kind": "facility", "name": "QA Test Facility, Goa", "accreditation": "GMP-QA-1",
+		"accreditationExpires": "2028-12-31",
+	}, tok)
+	if w.Code != 201 {
+		t.Fatalf("create site = %d: %s", w.Code, w.Body.String())
+	}
+	var created map[string]any
+	decodeBody(t, w, &created)
+	siteID, _ := created["id"].(string)
+	if siteID == "" {
+		t.Fatalf("no site id: %v", created)
+	}
+	// duplicates + validation
+	w = doReq(t, r, "POST", "/api/admin/catalogue/sites", map[string]any{
+		"kind": "facility", "name": "QA Test Facility, Goa", "accreditation": "GMP-QA-2",
+		"accreditationExpires": "2028-12-31",
+	}, tok)
+	if w.Code != 409 {
+		t.Fatalf("dup site = %d, want 409", w.Code)
+	}
+	for _, bad := range []map[string]any{
+		{"kind": "warehouse", "name": "QA Bad Kind Site", "accreditation": "GMP-X", "accreditationExpires": "2028-12-31"},
+		{"kind": "lab", "name": "QA", "accreditation": "NABL-X", "accreditationExpires": "2028-12-31"},
+		{"kind": "lab", "name": "QA Bad Date Lab", "accreditation": "NABL-X", "accreditationExpires": "2020-01-01"},
+		{"kind": "lab", "name": "QA Bad Date Lab", "accreditation": "NABL-X", "accreditationExpires": "not-a-date"},
+	} {
+		w = doReq(t, r, "POST", "/api/admin/catalogue/sites", bad, tok)
+		if w.Code != 400 {
+			t.Fatalf("invalid site %v = %d, want 400: %s", bad["name"], w.Code, w.Body.String())
+		}
+	}
+	// edit + archive + delete
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/sites/"+siteID,
+		map[string]any{"accreditation": "GMP-QA-100"}, tok)
+	if w.Code != 200 {
+		t.Fatalf("edit site = %d: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/sites/"+siteID,
+		map[string]any{"accreditationExpires": "2020-01-01"}, tok)
+	if w.Code != 400 {
+		t.Fatalf("expired accreditation = %d, want 400", w.Code)
+	}
+	w = doReq(t, r, "PATCH", "/api/admin/catalogue/sites/"+siteID, map[string]any{"archived": true}, tok)
+	if w.Code != 200 {
+		t.Fatalf("archive site = %d: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "DELETE", "/api/admin/catalogue/sites/"+siteID, nil, tok)
+	if w.Code != 200 {
+		t.Fatalf("delete site = %d: %s", w.Code, w.Body.String())
+	}
+	w = doReq(t, r, "DELETE", "/api/admin/catalogue/sites/11111111-1111-1111-1111-111111111111", nil, tok)
+	if w.Code != 404 {
+		t.Fatalf("delete missing site = %d, want 404", w.Code)
+	}
+
+	// --- audit trail covers every catalogue mutation ---
+	w = doReq(t, r, "GET", "/api/admin/audit?target=ZT", nil, tok)
+	var events []map[string]any
+	decodeBody(t, w, &events)
+	seen := map[string]bool{}
+	for _, e := range events {
+		seen[e["action"].(string)] = true
+	}
+	for _, want := range []string{"Created product", "Updated product", "Archived product", "Unarchived product", "Deleted product"} {
+		if !seen[want] {
+			t.Fatalf("audit missing %q for ZT: %v", want, seen)
+		}
+	}
+	w = doReq(t, r, "GET", "/api/admin/audit?target=QA%20Test%20Facility", nil, tok)
+	decodeBody(t, w, &events)
+	seen = map[string]bool{}
+	for _, e := range events {
+		seen[e["action"].(string)] = true
+	}
+	for _, want := range []string{"Created site", "Updated site", "Archived site", "Deleted site"} {
+		if !seen[want] {
+			t.Fatalf("audit missing %q for site: %v", want, seen)
+		}
+	}
+}
+
+// Profile: staff can rename themselves (audited); the display name is what
+// lands in every future audit row.
+func TestAdminUpdateMe(t *testing.T) {
+	r := testRouter(t)
+	tok := adminToken(t, r)
+
+	w := doReq(t, r, "GET", "/api/admin/me", nil, tok)
+	var before map[string]any
+	decodeBody(t, w, &before)
+	orig, _ := before["name"].(string)
+
+	w = doReq(t, r, "PATCH", "/api/admin/me", map[string]any{"name": "QA Renamed Admin"}, tok)
+	if w.Code != 200 {
+		t.Fatalf("patch me = %d: %s", w.Code, w.Body.String())
+	}
+	var out map[string]any
+	decodeBody(t, w, &out)
+	if out["name"] != "QA Renamed Admin" {
+		t.Fatalf("name = %v", out["name"])
+	}
+	if out["role"] != "admin" {
+		t.Fatalf("role must be preserved, got %v", out["role"])
+	}
+	// validation
+	w = doReq(t, r, "PATCH", "/api/admin/me", map[string]any{"name": "x"}, tok)
+	if w.Code != 400 {
+		t.Fatalf("short name = %d, want 400", w.Code)
+	}
+	// audited
+	w = doReq(t, r, "GET", "/api/admin/audit?target=admin%40bodylia.in", nil, tok)
+	var events []map[string]any
+	decodeBody(t, w, &events)
+	found := false
+	for _, e := range events {
+		if e["action"] == "Updated profile" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("audit missing Updated profile: %v", events)
+	}
+	// restore for later runs against the same DB snapshot
+	_, _ = mustTestDB(t).Exec(`UPDATE staff_users SET name=$1 WHERE lower(email)='admin@bodylia.in'`, orig)
 }

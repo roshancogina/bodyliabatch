@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState } from 'react'
 import type { StaffUser } from '../data/admin-seed'
-import { clearSession } from '../lib/auth'
+import { clearSession, loadSession } from '../lib/auth'
 import { PREVIEW_AUTH_ENABLED } from '../lib/runtime-env'
 import { SignIn } from './access/SignIn'
 import { TwoStep } from './access/TwoStep'
@@ -40,7 +40,14 @@ const loading = (
 )
 
 export function AdminApp({ onExit, className }: { onExit?: () => void; className?: string }) {
-  const [s, setS] = useState<AccessStep>({ step: 'signin' })
+  // Session persistence: a live JWT session (sessionStorage) survives page
+  // reloads and browser back/forward navigation — the console restores
+  // straight into the shell. Sign-out (manual or expired-token) clears the
+  // session, so those cases still land on the sign-in / signed-out screens.
+  const [s, setS] = useState<AccessStep>(() => {
+    const session = loadSession()
+    return session?.token && session.user ? { step: 'shell', user: session.user } : { step: 'signin' }
+  })
   const go = (next: AccessStep) => setS(next)
 
   const signOut = (user: StaffUser, reason: 'manual' | 'timeout') => {

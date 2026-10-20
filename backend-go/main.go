@@ -85,6 +85,7 @@ func newRouter(db *sql.DB) *ginEngine {
 	admin := r.Group("/api/admin", app.authMiddleware())
 	{
 		admin.GET("/me", app.handleMe)
+		admin.PATCH("/me", app.handleUpdateMe)
 		admin.GET("/insights", app.handleAdminInsights)
 		admin.GET("/batches", app.handleAdminListBatches)
 		admin.GET("/batches/:batch", app.handleAdminGetBatch)
@@ -109,8 +110,12 @@ func newRouter(db *sql.DB) *ginEngine {
 		admin.GET("/settings", app.handleAdminGetSettings)
 		admin.PATCH("/settings", app.handleAdminUpdateSettings)
 		admin.GET("/catalogue", app.handleAdminCatalogue)
-		admin.PATCH("/catalogue/products/:code", app.handleAdminArchiveProduct)
-		admin.PATCH("/catalogue/sites/:id", app.handleAdminArchiveSite)
+		admin.POST("/catalogue/products", app.handleAdminCreateProduct)
+		admin.PATCH("/catalogue/products/:code", app.handleAdminUpdateProduct)
+		admin.DELETE("/catalogue/products/:code", app.handleAdminDeleteProduct)
+		admin.POST("/catalogue/sites", app.handleAdminCreateSite)
+		admin.PATCH("/catalogue/sites/:id", app.handleAdminUpdateSite)
+		admin.DELETE("/catalogue/sites/:id", app.handleAdminDeleteSite)
 	}
 	return r
 }
