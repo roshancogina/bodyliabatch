@@ -28,7 +28,30 @@ await page.fill('input[autocomplete="username"]', EMAIL)
 await page.fill('input[autocomplete="current-password"]', PASSWORD)
 await page.waitForTimeout(2_500)
 await page.getByRole('button', { name: /continue/i }).click()
-await page.waitForSelector('h1:has-text("Staff console")', { timeout: 20_000 }).catch(() => fail('sign-in failed'))
+const CODE_2FA = process.env.CHECK_2FA_CODE ?? ''
+const onShell = await page
+  .waitForSelector('h1:has-text("Staff console")', { timeout: 8_000 })
+  .then(() => true)
+  .catch(() => false)
+if (!onShell) {
+  // Email 2FA is mandatory for every staff account in production — the code
+  // arrives via EmailIt; pass it through CHECK_2FA_CODE to complete the run.
+  const onCode = await page
+    .getByRole('heading', { name: /confirm your identity/i })
+    .waitFor({ timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!onCode) await fail('sign-in reached neither the console nor the email 2FA step')
+  step('reached email 2FA step (code delivered via EmailIt)')
+  if (!CODE_2FA) {
+    await fail('CHECK_2FA_CODE not set — read the 6-digit code from the inbox and re-run with CHECK_2FA_CODE=XXXXXX')
+  }
+  await page.fill('input[autocomplete="one-time-code"]', CODE_2FA)
+  await page.getByRole('button', { name: /verify and sign in/i }).click()
+  await page.waitForSelector('h1:has-text("Staff console")', { timeout: 20_000 }).catch(() =>
+    fail('2FA verification failed — wrong or expired code'),
+  )
+}
 step('signed in')
 
 // Overview is the default tab — its fetch must answer with the full contract.

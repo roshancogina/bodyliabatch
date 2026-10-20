@@ -12,6 +12,12 @@ import { adminApi, AuthExpired } from './admin-api'
 import { ProdOverview } from './ProdOverview'
 import { ProdRegisterBatchDialog } from './ProdRegisterBatchDialog'
 import { UsersPage } from './UsersPage'
+import { ProdAuditPage } from './prod/ProdAuditPage'
+import { ProdCataloguePage } from './prod/ProdCataloguePage'
+import { ProdEscalationsPage } from './prod/ProdEscalationsPage'
+import { ProdIntelligencePage } from './prod/ProdIntelligencePage'
+import { ProdReportsPage } from './prod/ProdReportsPage'
+import { ProdSettingsPage } from './prod/ProdSettingsPage'
 import { changePasswordSchema, type ChangePasswordInput } from './schemas'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -227,13 +233,13 @@ export function ProdShell({
             </ul>
           </section>
         )}
-        {tab === 'reports' && <ReportsStub user={user} />}
-        {tab === 'escalations' && <EscalationsStub user={user} />}
-        {tab === 'intelligence' && <IntelligenceStub /> }
+        {tab === 'reports' && <ProdReportsPage onSignOut={() => onSignOut('timeout')} />}
+        {tab === 'escalations' && <ProdEscalationsPage onSignOut={() => onSignOut('timeout')} />}
+        {tab === 'intelligence' && <ProdIntelligencePage onSignOut={() => onSignOut('timeout')} />}
         {tab === 'users' && <UsersPage user={user} />}
-        {tab === 'catalogue' && <CatalogueStub user={user} />}
-        {tab === 'settings' && <SettingsStub user={user} />}
-        {tab === 'audit' && <AuditStub user={user} />}
+        {tab === 'catalogue' && <ProdCataloguePage user={user} onSignOut={() => onSignOut('timeout')} />}
+        {tab === 'settings' && <ProdSettingsPage user={user} onSignOut={() => onSignOut('timeout')} />}
+        {tab === 'audit' && <ProdAuditPage onSignOut={() => onSignOut('timeout')} />}
         {tab === 'account' && (
           <section aria-label="My account" className="mt-6 max-w-2xl">
             <h2 className="font-serif text-2xl font-semibold text-graphite">My account</h2>
@@ -317,64 +323,6 @@ function PasswordForm({ onExpired, onDone }: { onExpired: () => void; onDone: (m
         Change password
       </Button>
     </form>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Read-only stub pages for sections backed by the Go API.            */
-/* Each fetches from its admin endpoint and renders a simple table.   */
-
-function ReportsStub({ user }: { user: StaffUser }) {
-  return (
-    <section aria-label="Reports" className="mt-6">
-      <h2 className="font-serif text-2xl font-semibold text-graphite">Customer reports</h2>
-      <p className="mt-1 text-graphite">Reports feed — full report management lives in the preview console. This tab shows the reports overview from the insights API.</p>
-    </section>
-  )
-}
-
-function EscalationsStub({ user }: { user: StaffUser }) {
-  return (
-    <section aria-label="Escalations" className="mt-6">
-      <h2 className="font-serif text-2xl font-semibold text-graphite">Escalations</h2>
-      <p className="mt-1 text-graphite">Escalation queue — full escalation management lives in the preview console.</p>
-    </section>
-  )
-}
-
-function IntelligenceStub() {
-  return (
-    <section aria-label="Intelligence" className="mt-6">
-      <h2 className="font-serif text-2xl font-semibold text-graphite">Intelligence</h2>
-      <p className="mt-1 text-graphite">Counterfeit exposure and lookup trends are shown on the Overview tab.</p>
-    </section>
-  )
-}
-
-function CatalogueStub({ user }: { user: StaffUser }) {
-  return (
-    <section aria-label="Catalogue" className="mt-6">
-      <h2 className="font-serif text-2xl font-semibold text-graphite">Product catalogue</h2>
-      <p className="mt-1 text-graphite">Catalogue management lives in the preview console.</p>
-    </section>
-  )
-}
-
-function SettingsStub({ user }: { user: StaffUser }) {
-  return (
-    <section aria-label="Settings" className="mt-6">
-      <h2 className="font-serif text-2xl font-semibold text-graphite">Settings</h2>
-      <p className="mt-1 text-graphite">Console settings live in the preview console.</p>
-    </section>
-  )
-}
-
-function AuditStub({ user }: { user: StaffUser }) {
-  return (
-    <section aria-label="Audit log" className="mt-6">
-      <h2 className="font-serif text-2xl font-semibold text-graphite">Audit log</h2>
-      <p className="mt-1 text-graphite">Audit events are recorded server-side for every staff, batch, and alias mutation.</p>
-    </section>
   )
 }
 
