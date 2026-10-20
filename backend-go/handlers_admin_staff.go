@@ -13,12 +13,12 @@ import (
 
 // StaffUserOut mirrors the frontend StaffUser contract (no password hash).
 type StaffUserOut struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	Email     string     `json:"email"`
-	Role      string     `json:"role"`
-	Status    string     `json:"status"`
-	MFA       bool       `json:"mfa"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Email      string     `json:"email"`
+	Role       string     `json:"role"`
+	Status     string     `json:"status"`
+	MFA        bool       `json:"mfa"`
 	LastActive *time.Time `json:"lastActive,omitempty"`
 }
 
@@ -67,6 +67,7 @@ func (a *App) handleAdminListStaff(c *gin.Context) {
 	}
 	c.JSON(200, out)
 }
+
 // POST /api/admin/staff — create / invite a staff member (requires users.manage).
 func (a *App) handleAdminCreateStaff(c *gin.Context) {
 	u := currentUser(c)
@@ -108,19 +109,19 @@ func (a *App) handleAdminCreateStaff(c *gin.Context) {
 	// Log the one-time password so the inviter can deliver it (no SMTP in this deploy).
 	log.Printf("staff-invite: %s (%s, role=%s) temporary password: %s", in.Name, in.Email, in.Role, tmpPwd)
 	c.JSON(200, gin.H{
-		"id":                 id,
-		"name":               in.Name,
-		"email":              in.Email,
-		"role":               in.Role,
-		"status":             "invited",
-		"temporaryPassword":  tmpPwd,
+		"id":                id,
+		"name":              in.Name,
+		"email":             in.Email,
+		"role":              in.Role,
+		"status":            "invited",
+		"temporaryPassword": tmpPwd,
 	})
 }
 
 // PATCH /api/admin/staff/:id — update role / status (requires users.manage).
 func (a *App) handleAdminUpdateStaff(c *gin.Context) {
 	u := currentUser(c)
-	if !canManageUsers(c) {
+	if !canManageUsers(u) {
 		c.JSON(403, gin.H{"error": "You cannot manage staff accounts."})
 		return
 	}
@@ -186,7 +187,7 @@ func (a *App) handleAdminUpdateStaff(c *gin.Context) {
 // DELETE /api/admin/staff/:id — deactivate a staff account (requires users.manage).
 func (a *App) handleAdminDeactivateStaff(c *gin.Context) {
 	u := currentUser(c)
-	if !canManageUsers(c) {
+	if !canManageUsers(u) {
 		c.JSON(403, gin.H{"error": "You cannot manage staff accounts."})
 		return
 	}

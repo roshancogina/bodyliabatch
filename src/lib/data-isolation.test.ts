@@ -47,8 +47,25 @@ describe('frontend data isolation', () => {
     // roles, batches, ui components).
     const adminDir = join(here, '..', 'admin')
     // ProdOverview/admin-api/insights are the API-backed console modules;
-    // all must stay import-safe in production builds too.
-    const entries = ['AdminApp.tsx', 'ProdShell.tsx', 'ProdOverview.tsx', 'admin-api.ts', 'insights.ts', 'access/SignIn.tsx']
+    // all must stay import-safe in production builds too. The prod/* pages
+    // (reports, escalations, intelligence, catalogue, settings, audit) and
+    // the register-batch dialog are statically imported by ProdShell.
+    const entries = [
+      'AdminApp.tsx',
+      'ProdShell.tsx',
+      'ProdOverview.tsx',
+      'ProdRegisterBatchDialog.tsx',
+      'admin-api.ts',
+      'insights.ts',
+      'access/SignIn.tsx',
+      'prod/shared.tsx',
+      'prod/ProdReportsPage.tsx',
+      'prod/ProdEscalationsPage.tsx',
+      'prod/ProdIntelligencePage.tsx',
+      'prod/ProdCataloguePage.tsx',
+      'prod/ProdSettingsPage.tsx',
+      'prod/ProdAuditPage.tsx',
+    ]
     const banned = /from\s+['"](\.\.\/)*(data\/(products|admin-seed|mock-batches)|lib\/store)['"]/
     const offenders: string[] = []
     for (const rel of entries) {
