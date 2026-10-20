@@ -4,6 +4,13 @@ import { Loader2 } from 'lucide-react'
 import { adminApi } from '../admin-api'
 import { toast } from '../../lib/toast'
 import { PageHeader } from '../PageHeader'
+import {
+  ConfirmRemoveDialog,
+  ProdProductDialog,
+  ProdSiteDialog,
+  type ProductRow,
+  type SiteRow,
+} from './ProdCatalogueDialogs'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
 import { ProdError, ProdLoading, useAdminQuery, useProdActions, whenLabel } from './shared'
@@ -56,6 +63,31 @@ export function ProdCataloguePage({ user, onSignOut }: { user: StaffUser; onSign
     }
   }
 
+  // Hard remove (DELETE) — server refuses products that registered batches
+  // still reference (409 → archive instead); sites remove cleanly. Audited.
+  const [productDialog, setProductDialog] = useState<{ open: boolean; editing: CatalogueProduct | null }>({
+    open: false,
+    editing: null,
+  })
+  const [siteDialog, setSiteDialog] = useState<{ open: boolean; editing: CatalogueSite | null }>({
+    open: false,
+    editing: null,
+  })
+  const [removing, setRemoving] = useState<{ kind: 'products' | 'sites'; key: string; label: string } | null>(null)
+
+  const confirmRemove = async () => {
+    if (!removing) return
+    const t = removing
+    const ok = await run(`remove:${t.kind}:${t.key}`, async () => {
+      await adminApi(`/api/admin/catalogue/${t.kind}/${encodeURIComponent(t.key)}`, { method: 'DELETE' })
+    })
+    if (ok) {
+      toast(`${t.label} removed`, { description: 'Recorded in the audit log.' })
+      reload()
+    }
+    setRemoving(null)
+  }
+
   if (error) {
     return (
       <div className="mt-6">
@@ -82,10 +114,22 @@ export function ProdCataloguePage({ user, onSignOut }: { user: StaffUser; onSign
       <PageHeader
         title="Product catalogue"
         description="Products, manufacturing facilities and accredited labs behind every verification."
+        actions={
+          isAdmin ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => setSiteDialog({ open: true, editing: null })}>
+                Add site
+              </Button>
+              <Button type="button" onClick={() => setProductDialog({ open: true, editing: null })}>
+                Add product
+              </Button>
+            </>
+          ) : undefined
+        }
       />
       {!isAdmin && (
         <p className="mt-4 rounded-md border border-mist bg-sand p-3 text-sm text-graphite">
-          You can review the catalogue here — only admins can archive or restore entries.
+          You can review the catalogue here — only admins can add, edit, archive or remove entries.
         </p>
       )}
 
@@ -118,16 +162,34 @@ export function ProdCataloguePage({ user, onSignOut }: { user: StaffUser; onSign
                   </td>
                   <td className="py-2.5 text-right">
                     {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy === `products:${p.code}`}
-                        onClick={() => setArchived('products', p.code, !p.archived, p.name)}
-                        aria-label={`${p.archived ? 'Restore' : 'Archive'} product ${p.name}`}
-                      >
-                        {busy === `products:${p.code}` ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-                        {p.archived ? 'Restore' : 'Archive'}
-                      </Button>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setProductDialog({ open: true, editing: p })}
+                          aria-label={`Edit product ${p.name}`}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy === `products:${p.code}`}
+                          onClick={() => setArchived('products', p.code, !p.archived, p.name)}
+                          aria-label={`${p.archived ? 'Restore' : 'Archive'} product ${p.name}`}
+                        >
+                          {busy === `products:${p.code}` ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                          {p.archived ? 'Restore' : 'Archive'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRemoving({ kind: 'products', key: p.code, label: p.name })}
+                          aria-label={`Remove product ${p.name}`}
+                        >
+                          Remove
+                        </Button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -166,16 +228,34 @@ export function ProdCataloguePage({ user, onSignOut }: { user: StaffUser; onSign
                   </td>
                   <td className="py-2.5 text-right">
                     {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy === `sites:${s.id}`}
-                        onClick={() => setArchived('sites', s.id, !s.archived, s.name)}
-                        aria-label={`${s.archived ? 'Restore' : 'Archive'} site ${s.name}`}
-                      >
-                        {busy === `sites:${s.id}` ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-                        {s.archived ? 'Restore' : 'Archive'}
-                      </Button>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSiteDialog({ open: true, editing: s })}
+                          aria-label={`Edit site ${s.name}`}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy === `sites:${s.id}`}
+                          onClick={() => setArchived('sites', s.id, !s.archived, s.name)}
+                          aria-label={`${s.archived ? 'Restore' : 'Archive'} site ${s.name}`}
+                        >
+                          {busy === `sites:${s.id}` ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                          {s.archived ? 'Restore' : 'Archive'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRemoving({ kind: 'sites', key: s.id, label: s.name })}
+                          aria-label={`Remove site ${s.name}`}
+                        >
+                          Remove
+                        </Button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -185,6 +265,31 @@ export function ProdCataloguePage({ user, onSignOut }: { user: StaffUser; onSign
           {data.sites.length === 0 && <p className="mt-4 text-graphite">No sites registered yet.</p>}
         </div>
       </section>
+
+      <ProdProductDialog
+        open={productDialog.open}
+        editing={productDialog.editing}
+        existingCodes={data.products.map((p) => p.code)}
+        onClose={() => setProductDialog({ open: false, editing: null })}
+        onSaved={reload}
+      />
+      <ProdSiteDialog
+        open={siteDialog.open}
+        editing={siteDialog.editing}
+        onClose={() => setSiteDialog({ open: false, editing: null })}
+        onSaved={reload}
+      />
+      <ConfirmRemoveDialog
+        open={removing !== null}
+        title={removing ? `Remove ${removing.label}?` : ''}
+        body={
+          removing?.kind === 'products'
+            ? 'The product is deleted permanently. If registered batches still use it you will see a message to archive it instead. Either way the removal is recorded in the audit log.'
+            : 'The site is deleted permanently and the removal is recorded in the audit log.'
+        }
+        onClose={() => setRemoving(null)}
+        onConfirm={confirmRemove}
+      />
     </div>
   )
 }

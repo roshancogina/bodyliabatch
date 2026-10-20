@@ -5,21 +5,23 @@ import { KeyRound, Loader2, LogOut, Plus, Search, X } from 'lucide-react'
 import type { StaffUser } from '../data/admin-seed'
 import { ROLE_LABEL } from '../data/roles'
 import { aliasCode, type BatchRecord } from '../data/batches'
-import { changePassword } from '../lib/auth'
+import { can, changePassword, loadSession, saveSession } from '../lib/auth'
 import { normaliseAlias } from '../lib/utils'
 import { toast } from '../lib/toast'
 import { adminApi, AuthExpired } from './admin-api'
 import { ProdOverview } from './ProdOverview'
 import { ProdRegisterBatchDialog } from './ProdRegisterBatchDialog'
 import { UsersPage } from './UsersPage'
+import { ProdBatchEditDialog, ProdBatchImportDialog, ProdBatchRecallDialog } from './prod/ProdBatchDialogs'
 import { ProdAuditPage } from './prod/ProdAuditPage'
 import { ProdCataloguePage } from './prod/ProdCataloguePage'
 import { ProdEscalationsPage } from './prod/ProdEscalationsPage'
 import { ProdIntelligencePage } from './prod/ProdIntelligencePage'
 import { ProdReportsPage } from './prod/ProdReportsPage'
 import { ProdSettingsPage } from './prod/ProdSettingsPage'
-import { changePasswordSchema, type ChangePasswordInput } from './schemas'
+import { changePasswordSchema, profileSchema, type ChangePasswordInput, type ProfileInput } from './schemas'
 import { Button } from '../components/ui/button'
+import { Badge } from '../components/ui/badge'
 import { Input } from '../components/ui/input'
 import { FormField } from '../components/ui/form-field'
 import { PasswordField } from './access/PasswordField'
@@ -48,6 +50,10 @@ export function ProdShell({
 }) {
   const [tab, setTab] = useState<Tab>('overview')
   const [registering, setRegistering] = useState(false)
+  const [me, setMe] = useState(user)
+  const [editing, setEditing] = useState<BatchRecord | null>(null)
+  const [recallTarget, setRecallTarget] = useState<{ record: BatchRecord; mode: 'recall' | 'restore' } | null>(null)
+  const [importing, setImporting] = useState(false)
   const [batches, setBatches] = useState<BatchRecord[] | null>(null)
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
@@ -107,6 +113,13 @@ export function ProdShell({
       }),
     )
 
+  /** My account → profile rename: refresh the shell + the persisted session. */
+  const onProfileUpdated = (next: StaffUser) => {
+    setMe(next)
+    const session = loadSession()
+    if (session) saveSession({ token: session.token, user: next })
+  }
+
   return (
     <div className={className}>
       <div className="mx-auto max-w-6xl px-5 py-10">
@@ -115,7 +128,7 @@ export function ProdShell({
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Bodylia staff</p>
             <h1 className="font-serif text-3xl font-semibold text-graphite">Staff console</h1>
             <p className="mt-1 text-sm text-muted">
-              {user.name} · <span className="font-semibold text-graphite">{ROLE_LABEL[user.role]}</span>
+              {me.name} · <span className="font-semibold text-graphite">{ROLE_LABEL[me.role]}</span>
             </p>
           </div>
           <div className="flex gap-3">
@@ -139,7 +152,7 @@ export function ProdShell({
           <NavTab id="account" label="My account" active={tab === 'account'} onClick={() => setTab('account')} />
         </nav>
         {tab === 'overview' && (
-          <ProdOverview user={user} onExpired={() => onSignOut('timeout')} onGoTab={(next) => setTab(next)} />
+          <ProdOverview user={me} onExpired={() => onSignOut('timeout')} onGoTab={(next) => setTab(next)} />
         )}
         {tab === 'batches' && (
           <section aria-label="Batches and aliases" className="mt-6">
@@ -158,9 +171,16 @@ export function ProdShell({
                   <Search aria-hidden="true" className="mr-2 h-4 w-4" /> Search
                 </Button>
               </form>
-              <Button onClick={() => setRegistering(true)}>
-                <Plus aria-hidden="true" className="mr-2 h-4 w-4" /> Register batch
-              </Button>
+              {can(me, 'batches.import') && (
+                <Button variant="outline" onClick={() => setImporting(true)}>
+                  Import CSV
+                </Button>
+              )}
+              {can(me, 'batches.register') && (
+                <Button onClick={() => setRegistering(true)}>
+                  <Plus aria-hidden="true" className="mr-2 h-4 w-4" /> Register batch
+                </Button>
+              )}
             </div>
 
             {listError && (
@@ -228,29 +248,69 @@ export function ProdShell({
                       </Button>
                     </form>
                   </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-2">
+                    {can(me, 'batches.edit') && (
+                      <Button size="sm" variant="outline" onClick={() => setEditing(b)} aria-label={`Edit ${b.batch}`}>
+                        Edit
+                      </Button>
+                    )}
+                    {can(me, 'batches.recall') && b.status === 'released' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRecallTarget({ record: b, mode: 'recall' })}
+                        aria-label={`Recall ${b.batch}`}
+                      >
+                        Recall
+                      </Button>
+                    )}
+                    {can(me, 'batches.recall') && b.status === 'recalled' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRecallTarget({ record: b, mode: 'restore' })}
+                        aria-label={`Restore ${b.batch}`}
+                      >
+                        Restore
+                      </Button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
           </section>
         )}
+
+        <ProdBatchEditDialog record={editing} onClose={() => setEditing(null)} onSaved={() => void load(search)} />
+        <ProdBatchRecallDialog
+          record={recallTarget?.record ?? null}
+          mode={recallTarget?.mode ?? 'recall'}
+          onClose={() => setRecallTarget(null)}
+          onSaved={() => void load(search)}
+        />
+        {importing && <ProdBatchImportDialog onClose={() => setImporting(false)} onImported={() => void load(search)} />}
+
         {tab === 'reports' && <ProdReportsPage onSignOut={() => onSignOut('timeout')} />}
         {tab === 'escalations' && <ProdEscalationsPage onSignOut={() => onSignOut('timeout')} />}
         {tab === 'intelligence' && <ProdIntelligencePage onSignOut={() => onSignOut('timeout')} />}
-        {tab === 'users' && <UsersPage user={user} />}
-        {tab === 'catalogue' && <ProdCataloguePage user={user} onSignOut={() => onSignOut('timeout')} />}
-        {tab === 'settings' && <ProdSettingsPage user={user} onSignOut={() => onSignOut('timeout')} />}
+        {tab === 'users' && <UsersPage user={me} />}
+        {tab === 'catalogue' && <ProdCataloguePage user={me} onSignOut={() => onSignOut('timeout')} />}
+        {tab === 'settings' && <ProdSettingsPage user={me} onSignOut={() => onSignOut('timeout')} />}
         {tab === 'audit' && <ProdAuditPage onSignOut={() => onSignOut('timeout')} />}
         {tab === 'account' && (
           <section aria-label="My account" className="mt-6 max-w-2xl">
             <h2 className="font-serif text-2xl font-semibold text-graphite">My account</h2>
             <dl className="mt-4 grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
               <dt className="text-muted">Name</dt>
-              <dd className="font-medium text-graphite">{user.name}</dd>
+              <dd className="font-medium text-graphite">{me.name}</dd>
               <dt className="text-muted">Work email</dt>
-              <dd className="font-medium text-graphite">{user.email}</dd>
+              <dd className="font-medium text-graphite">{me.email}</dd>
               <dt className="text-muted">Role</dt>
-              <dd className="font-medium text-graphite">{ROLE_LABEL[user.role]}</dd>
+              <dd className="font-medium text-graphite">{ROLE_LABEL[me.role]}</dd>
             </dl>
+
+            <ProfileForm user={me} onUpdated={onProfileUpdated} />
 
             <h3 className="mt-8 flex items-center gap-2 font-semibold text-graphite">
               <KeyRound aria-hidden="true" className="h-4 w-4 text-burgundy" /> Change password
@@ -337,5 +397,68 @@ function NavTab({ id, label, active, onClick }: { id: Tab; label: string; active
     >
       {label}
     </button>
+  )
+}
+
+/**
+ * My account → profile. PATCH /api/admin/me { name } — the display name is
+ * what lands in every audit row, so the change is audited server-side; the
+ * refreshed name is written back to the persisted session.
+ */
+function ProfileForm({ user, onUpdated }: { user: StaffUser; onUpdated: (u: StaffUser) => void }) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<ProfileInput>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: { name: user.name, notifyEscalations: false, notifyDigest: false },
+  })
+  const [done, setDone] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const submit = handleSubmit(async (v) => {
+    setBusy(true)
+    setDone(false)
+    try {
+      const out = await adminApi<{ id: string; name: string }>('/api/admin/me', {
+        method: 'PATCH',
+        body: { name: v.name },
+      })
+      onUpdated({ ...user, name: out.name })
+      reset({ name: out.name, notifyEscalations: false, notifyDigest: false })
+      setDone(true)
+      toast('Profile updated', { description: 'Your display name is what appears in the audit log.' })
+    } catch (e) {
+      toast((e as Error).message, { tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  })
+
+  return (
+    <form onSubmit={submit} className="mt-8 flex max-w-md flex-col gap-4 border-b border-mist pb-6" aria-busy={busy}>
+      <h3 className="flex items-center gap-2 font-semibold text-graphite">
+        <KeyRound aria-hidden="true" className="h-4 w-4" /> Profile
+      </h3>
+      <FormField
+        id="acct-name"
+        label="Full name"
+        description="Shown in the audit log for every action you take."
+        error={errors.name?.message}
+      >
+        {(a) => <Input {...a} {...register('name')} autoComplete="name" maxLength={80} />}
+      </FormField>
+      {done && (
+        <p role="status" className="text-sm font-medium text-leaf">
+          Profile updated.
+        </p>
+      )}
+      <Button type="submit" className="self-start" disabled={isSubmitting || busy}>
+        {isSubmitting || busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+        Save profile
+      </Button>
+    </form>
   )
 }
