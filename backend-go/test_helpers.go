@@ -92,4 +92,6 @@ func resetTestDB(t *testing.T, db *sql.DB) {
 		 'MB-2203-MB45','PH-2504-PH77','FN-2501-FN01')`); err != nil {
 		t.Fatalf("reset batches: %v", err)
 	}
+	_, _ = db.Exec(`DELETE FROM batch_coa_files`)
+	_, _ = db.Exec(`UPDATE batches SET coa_file_name=NULL`)
 }

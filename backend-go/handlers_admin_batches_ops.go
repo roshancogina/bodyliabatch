@@ -8,6 +8,7 @@ package main
 // Every mutation writes an audit_log row; recall also sets recall_reason.
 
 import (
+	"io"
 	"strings"
 	"time"
 
@@ -40,8 +41,24 @@ func (a *App) handleAdminEditBatch(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Explain the correction in at least 20 characters — this edit is recorded in the audit log."})
 		return
 	}
-	mfg, err1 := time.Parse("2006-01-02", in.Manufactured)
-	exp, err2 := time.Parse("2006-01-02", in.Expires)
+	mfgStr := strings.TrimSpace(in.Manufactured)
+	if mfgStr == "" {
+		mfgStr = rec.Manufactured
+	}
+	expStr := strings.TrimSpace(in.Expires)
+	if expStr == "" {
+		expStr = rec.Expires
+	}
+	facilityStr := strings.TrimSpace(in.Facility)
+	if facilityStr == "" {
+		facilityStr = rec.Facility
+	}
+	labStr := strings.TrimSpace(in.Lab)
+	if labStr == "" {
+		labStr = rec.Lab
+	}
+	mfg, err1 := time.Parse("2006-01-02", mfgStr)
+	exp, err2 := time.Parse("2006-01-02", expStr)
 	if err1 != nil || err2 != nil || !exp.After(mfg) {
 		c.JSON(400, gin.H{"error": "Expiry date must be after the manufacture date."})
 		return
@@ -52,13 +69,13 @@ func (a *App) handleAdminEditBatch(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Manufacture date can’t be more than a year in the future."})
 		return
 	}
-	if strings.TrimSpace(in.Facility) == "" || strings.TrimSpace(in.Lab) == "" {
+	if facilityStr == "" || labStr == "" {
 		c.JSON(400, gin.H{"error": "Facility and lab are required."})
 		return
 	}
 	if _, err := a.store.db.Exec(`UPDATE batches SET manufactured=$1, expires=$2,
 		facility=$3, lab=$4, updated_at=NOW() WHERE batch=$5`,
-		in.Manufactured, in.Expires, strings.TrimSpace(in.Facility), strings.TrimSpace(in.Lab), batch); err != nil {
+		mfgStr, expStr, facilityStr, labStr, batch); err != nil {
 		c.JSON(500, gin.H{"error": "Could not update batch."})
 		return
 	}
@@ -267,4 +284,126 @@ func (a *App) handleAdminImportBatches(c *gin.Context) {
 		VALUES ($1,'Bulk imported batches',$2,$3)`, u.Name, itoa(len(batches)),
 		"aliases: "+itoa(len(pending)))
 	c.JSON(201, gin.H{"imported": len(batches), "aliases": len(pending)})
+}
+
+// POST /api/admin/batches/:batch/coa — upload/attach a signed lab certificate (PDF, up to 10 MB).
+func (a *App) handleAdminUploadCOA(c *gin.Context) {
+	batch := normaliseBatch(c.Param("batch"))
+	rec, _, _, err := a.store.ResolveBatch(batch)
+	if err != nil || rec == nil {
+		c.JSON(404, gin.H{"error": "Batch not found."})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		file, err = c.FormFile("coa")
+	}
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Select a PDF certificate to upload."})
+		return
+	}
+
+	if file.Size > 10*1024*1024 {
+		c.JSON(400, gin.H{"error": "The certificate must be 10 MB or smaller."})
+		return
+	}
+
+	lowerName := strings.ToLower(file.Filename)
+	if !strings.HasSuffix(lowerName, ".pdf") && file.Header.Get("Content-Type") != "application/pdf" {
+		c.JSON(400, gin.H{"error": "The certificate must be a PDF."})
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Could not read uploaded file."})
+		return
+	}
+	defer src.Close()
+
+	data, err := io.ReadAll(src)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Could not read uploaded file data."})
+		return
+	}
+
+	tx, err := a.store.db.Begin()
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Database error."})
+		return
+	}
+
+	_, err = tx.Exec(`INSERT INTO batch_coa_files (batch, file_name, content_type, file_data, file_size)
+		VALUES ($1, $2, 'application/pdf', $3, $4)
+		ON CONFLICT (batch) DO UPDATE SET file_name=EXCLUDED.file_name, content_type=EXCLUDED.content_type, file_data=EXCLUDED.file_data, file_size=EXCLUDED.file_size, uploaded_at=NOW()`,
+		rec.Batch, file.Filename, data, len(data))
+	if err != nil {
+		_ = tx.Rollback()
+		c.JSON(500, gin.H{"error": "Could not save certificate."})
+		return
+	}
+
+	_, err = tx.Exec(`UPDATE batches SET coa_file_name=$1, updated_at=NOW() WHERE batch=$2`, file.Filename, rec.Batch)
+	if err != nil {
+		_ = tx.Rollback()
+		c.JSON(500, gin.H{"error": "Could not update batch."})
+		return
+	}
+
+	u := currentUser(c)
+	_, _ = tx.Exec(`INSERT INTO audit_log (actor, action, target, detail)
+		VALUES ($1, 'Attached COA', $2, $3)`, u.Name, rec.Batch, file.Filename)
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(500, gin.H{"error": "Could not commit transaction."})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"batch":       rec.Batch,
+		"coaFileName": file.Filename,
+		"fileSize":    len(data),
+	})
+}
+
+// DELETE /api/admin/batches/:batch/coa — remove/detach attached COA certificate.
+func (a *App) handleAdminDeleteCOA(c *gin.Context) {
+	batch := normaliseBatch(c.Param("batch"))
+	rec, _, _, err := a.store.ResolveBatch(batch)
+	if err != nil || rec == nil {
+		c.JSON(404, gin.H{"error": "Batch not found."})
+		return
+	}
+
+	tx, err := a.store.db.Begin()
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Database error."})
+		return
+	}
+
+	_, err = tx.Exec(`DELETE FROM batch_coa_files WHERE batch=$1`, rec.Batch)
+	if err != nil {
+		_ = tx.Rollback()
+		c.JSON(500, gin.H{"error": "Could not remove certificate."})
+		return
+	}
+
+	_, err = tx.Exec(`UPDATE batches SET coa_file_name=NULL, updated_at=NOW() WHERE batch=$1`, rec.Batch)
+	if err != nil {
+		_ = tx.Rollback()
+		c.JSON(500, gin.H{"error": "Could not update batch."})
+		return
+	}
+
+	u := currentUser(c)
+	_, _ = tx.Exec(`INSERT INTO audit_log (actor, action, target, detail)
+		VALUES ($1, 'Removed COA', $2, NULL)`, u.Name, rec.Batch)
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(500, gin.H{"error": "Could not commit transaction."})
+		return
+	}
+
+	c.JSON(200, gin.H{"batch": rec.Batch, "removed": true})
 }

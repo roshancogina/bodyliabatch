@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -29,14 +30,16 @@ func requireCaptcha(c *gin.Context, token string) bool {
 
 func (a *App) handleSubmitReport(c *gin.Context) {
 	var in struct {
-		FullName string `json:"fullName"`
-		Email    string `json:"email"`
-		Phone    string `json:"phone"`
-		Batch    string `json:"batch"`
-		Channel  string `json:"channel"`
-		Message  string `json:"message"`
-		Consent  bool   `json:"consent"`
-		Captcha  string `json:"captchaToken"`
+		FullName     string `json:"fullName"`
+		Email        string `json:"email"`
+		Phone        string `json:"phone"`
+		Batch        string `json:"batch"`
+		Channel      string `json:"channel"`
+		OrderNumber  string `json:"orderNumber"`
+		PurchaseDate string `json:"purchaseDate"`
+		Message      string `json:"message"`
+		Consent      bool   `json:"consent"`
+		Captcha      string `json:"captchaToken"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(400, gin.H{"error": "Invalid request body"})
@@ -70,14 +73,22 @@ func (a *App) handleSubmitReport(c *gin.Context) {
 	}
 	rec, _, _, _ := a.store.ResolveBatch(in.Batch)
 	var canonical sql.NullString
+	batchVerified := false
 	if rec != nil {
 		canonical = sql.NullString{String: rec.Batch, Valid: true}
+		batchVerified = true
 	}
 	now := nowTime()
 	ref := "SR-" + now.Format("2006") + "-" + nextReportSeq(a.store)
-	var phone sql.NullString
+	var phone, orderNum, purchDate sql.NullString
 	if strings.TrimSpace(in.Phone) != "" {
 		phone = sql.NullString{String: strings.TrimSpace(in.Phone), Valid: true}
+	}
+	if strings.TrimSpace(in.OrderNumber) != "" {
+		orderNum = sql.NullString{String: strings.TrimSpace(in.OrderNumber), Valid: true}
+	}
+	if strings.TrimSpace(in.PurchaseDate) != "" {
+		purchDate = sql.NullString{String: strings.TrimSpace(in.PurchaseDate), Valid: true}
 	}
 	tx, err := a.store.db.Begin()
 	if err != nil {
@@ -85,9 +96,9 @@ func (a *App) handleSubmitReport(c *gin.Context) {
 		return
 	}
 	_, err = tx.Exec(`INSERT INTO reports
-		(reference, full_name, email, phone, batch_input, batch_canonical, channel, message, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'new')`,
-		ref, in.FullName, in.Email, phone, in.Batch, canonical, in.Channel, in.Message)
+		(reference, full_name, email, phone, batch_input, batch_canonical, channel, order_number, purchase_date, batch_verified, message, status)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'new')`,
+		ref, in.FullName, in.Email, phone, in.Batch, canonical, in.Channel, orderNum, purchDate, batchVerified, in.Message)
 	if err != nil {
 		tx.Rollback()
 		c.JSON(500, gin.H{"error": "Could not save report"})
@@ -95,10 +106,14 @@ func (a *App) handleSubmitReport(c *gin.Context) {
 	}
 	_, _ = tx.Exec(`INSERT INTO report_timeline (reference, by, kind, text)
 		VALUES ($1,'Customer','received','Report received via batch.bodylia.in')`, ref)
+	_, _ = tx.Exec(`INSERT INTO audit_log (actor, action, target, detail)
+		VALUES ($1,'Submitted report',$2,$3)`, in.FullName, ref, fmt.Sprintf("Batch: %s; Channel: %s; Verified: %v", in.Batch, in.Channel, batchVerified))
 	if err := tx.Commit(); err != nil {
 		c.JSON(500, gin.H{"error": "Could not save report"})
 		return
 	}
+	_ = deliverReportReceivedCustomerEmail(in.Email, in.FullName, ref, in.Batch, in.Channel)
+	_ = deliverReportNotificationInternalEmail(ref, in.FullName, in.Email, in.Phone, in.Batch, in.Channel, in.OrderNumber, in.PurchaseDate, in.Message)
 	c.JSON(201, gin.H{"reference": ref})
 }
 

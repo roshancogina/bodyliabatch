@@ -24,6 +24,9 @@ interface ReportSummary {
   email: string
   batch: string
   channel: string
+  orderNumber?: string
+  purchaseDate?: string
+  batchVerified?: boolean
   message: string
   status: string
   assignee?: string
@@ -287,7 +290,12 @@ function ReportDetailPanel({
             {report.fullName} · {report.email}
             {report.phone ? ` · ${report.phone}` : ''} · via {report.channel} · filed {whenLabel(report.createdAt)}
           </p>
-          <p className="tabular mt-1 text-sm text-muted">Batch checked: {report.batch || '—'}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+            <span className="tabular">Batch: <strong className="text-graphite">{report.batch || '—'}</strong></span>
+            {report.batchVerified && <span className="text-emerald-700 font-medium">✓ Verified genuine batch</span>}
+            {report.orderNumber && <span>Order #: <strong className="text-graphite">{report.orderNumber}</strong></span>}
+            {report.purchaseDate && <span>Purchased: <strong className="text-graphite">{report.purchaseDate}</strong></span>}
+          </div>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={onBack}>
           Close detail

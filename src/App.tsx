@@ -26,7 +26,7 @@ import { consumeSuppressed, readRoute, writeRoute, type Route } from './lib/rout
  */
 const AdminApp = lazy(() => import('./admin/AdminApp').then((m) => ({ default: m.AdminApp })))
 
-export type PublicPage = 'home' | 'track' | 'recalls' | 'faq' | 'accessibility' | 'privacy' | 'terms'
+export type PublicPage = 'home' | 'report' | 'track' | 'recalls' | 'faq' | 'accessibility' | 'privacy' | 'terms'
 
 type View =
   | { name: 'home' | 'track' | 'recalls' | 'faq' | 'accessibility' | 'privacy' | 'terms' | 'notfound'; prefill?: string }
@@ -34,7 +34,7 @@ type View =
   | { name: 'report'; batch: string }
   | { name: 'submitted'; reference: string }
 
-const KNOWN: PublicPage[] = ['home', 'track', 'recalls', 'faq', 'accessibility', 'privacy', 'terms']
+const KNOWN: PublicPage[] = ['home', 'report', 'track', 'recalls', 'faq', 'accessibility', 'privacy', 'terms']
 
 export function App() {
   const [view, setView] = useState<View>(() => viewFromRoute(readRoute()))
@@ -96,6 +96,11 @@ export function App() {
   }, [view.name])
 
   const navigate = (page: PublicPage, prefill?: string) => {
+    if (page === 'report') {
+      setView({ name: 'report', batch: prefill ?? '' })
+      writeRoute({ p: 'report', b: prefill || undefined })
+      return
+    }
     setView({ name: page, prefill })
     writeRoute({ p: page })
   }
@@ -133,7 +138,10 @@ export function App() {
             batch={view.batch}
             result={view.result}
             onBack={() => navigate('home')}
-            onReport={() => setView({ name: 'report', batch: view.batch })}
+            onReport={() => {
+              setView({ name: 'report', batch: view.batch })
+              writeRoute({ p: 'report', b: view.batch })
+            }}
           />
         )}
         {view.name === 'report' && (
@@ -161,7 +169,7 @@ export function App() {
 const TITLES: Record<string, string> = {
   home: 'Verify your pack',
   result: 'Batch result',
-  report: 'Report a suspicious pack',
+  report: 'Report a batch issue',
   submitted: 'Report received',
   track: 'Track a report',
   recalls: 'Active recalls',
@@ -174,7 +182,11 @@ const TITLES: Record<string, string> = {
 
 function viewFromRoute(r: Route): View {
   if (!r.p || r.p === 'console' || r.p === 'home') return { name: 'home' }
-  return KNOWN.includes(r.p as PublicPage) ? { name: r.p as PublicPage } : { name: 'notfound' }
+  if (r.p === 'report') return { name: 'report', batch: r.b ?? '' }
+  if (r.p === 'track' || r.p === 'recalls' || r.p === 'faq' || r.p === 'accessibility' || r.p === 'privacy' || r.p === 'terms') {
+    return { name: r.p }
+  }
+  return { name: 'notfound' }
 }
 
 /**

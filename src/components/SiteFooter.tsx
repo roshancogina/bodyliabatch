@@ -7,6 +7,7 @@ import { SUPPORT_EMAIL } from '../data/catalog-static'
 export function SiteFooter({ navigate }: { navigate: (p: PublicPage) => void }) {
   const email = SUPPORT_EMAIL
   const links: [string, PublicPage | string][] = [
+    ['Report an issue', 'report'],
     ['Track a report', 'track'],
     ['Active recalls', 'recalls'],
     ['How verification works', 'faq'],

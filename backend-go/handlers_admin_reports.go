@@ -17,17 +17,20 @@ var reportStatuses = map[string]bool{
 }
 
 type ReportSummary struct {
-	Reference string    `json:"reference"`
-	FullName  string    `json:"fullName"`
-	Email     string    `json:"email"`
-	Batch     string    `json:"batch"`
-	Channel   string    `json:"channel"`
-	Message   string    `json:"message"`
-	Status    string    `json:"status"`
-	Assignee  *string   `json:"assignee,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	PhotoName *string   `json:"photoName,omitempty"`
+	Reference     string    `json:"reference"`
+	FullName      string    `json:"fullName"`
+	Email         string    `json:"email"`
+	Batch         string    `json:"batch"`
+	Channel       string    `json:"channel"`
+	OrderNumber   *string   `json:"orderNumber,omitempty"`
+	PurchaseDate  *string   `json:"purchaseDate,omitempty"`
+	BatchVerified bool      `json:"batchVerified"`
+	Message       string    `json:"message"`
+	Status        string    `json:"status"`
+	Assignee      *string   `json:"assignee,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+	PhotoName     *string   `json:"photoName,omitempty"`
 }
 
 // GET /api/admin/reports
@@ -35,7 +38,8 @@ func (a *App) handleAdminListReports(c *gin.Context) {
 	status := strings.TrimSpace(c.Query("status"))
 	q := strings.TrimSpace(c.Query("q"))
 	query := `SELECT reference, full_name, email, batch_input, channel, message, status,
-		assignee, created_at, updated_at, photo_name FROM reports`
+		assignee, created_at, updated_at, photo_name,
+		order_number, purchase_date, COALESCE(batch_verified, FALSE) FROM reports`
 	where := []string{}
 	args := []any{}
 	if status != "" && status != "all" {
@@ -67,9 +71,11 @@ func (a *App) handleAdminListReports(c *gin.Context) {
 	out := []ReportSummary{}
 	for rows.Next() {
 		var r ReportSummary
-		var assignee, photo sql.NullString
+		var assignee, photo, orderNum, purchDate sql.NullString
+		var batchVerified sql.NullBool
 		if err := rows.Scan(&r.Reference, &r.FullName, &r.Email, &r.Batch, &r.Channel,
-			&r.Message, &r.Status, &assignee, &r.CreatedAt, &r.UpdatedAt, &photo); err != nil {
+			&r.Message, &r.Status, &assignee, &r.CreatedAt, &r.UpdatedAt, &photo,
+			&orderNum, &purchDate, &batchVerified); err != nil {
 			c.JSON(500, gin.H{"error": "Could not read report row."})
 			return
 		}
@@ -78,6 +84,15 @@ func (a *App) handleAdminListReports(c *gin.Context) {
 		}
 		if photo.Valid {
 			r.PhotoName = &photo.String
+		}
+		if orderNum.Valid {
+			r.OrderNumber = &orderNum.String
+		}
+		if purchDate.Valid {
+			r.PurchaseDate = &purchDate.String
+		}
+		if batchVerified.Valid {
+			r.BatchVerified = batchVerified.Bool
 		}
 		out = append(out, r)
 	}
@@ -176,6 +191,9 @@ func (a *App) handleAdminUpdateReport(c *gin.Context) {
 	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
 		VALUES ($1,'Updated report',$2,$3)`, u.Name, ref, reportAuditDetail(in.Status, note, in.Assignee))
 	rep, _ := a.getReport(ref)
+	if in.Status != "" && rep != nil {
+		_ = deliverReportStatusCustomerEmail(rep.Email, rep.FullName, ref, rep.Batch, in.Status, note)
+	}
 	c.JSON(200, rep)
 }
 
@@ -204,7 +222,8 @@ func (a *App) handleAdminEscalateReport(c *gin.Context) {
 		return
 	}
 	ref := c.Param("ref")
-	if _, err := a.getReport(ref); err != nil {
+	rep, err := a.getReport(ref)
+	if err != nil || rep == nil {
 		c.JSON(404, gin.H{"error": "Report not found."})
 		return
 	}
@@ -244,6 +263,7 @@ func (a *App) handleAdminEscalateReport(c *gin.Context) {
 	}
 	_, _ = a.store.db.Exec(`INSERT INTO audit_log (actor, action, target, detail)
 		VALUES ($1,'Escalated report',$2,$3)`, u.Name, ref, "urgency: "+in.Urgency)
+	_ = deliverReportEscalatedEmail(ref, rep.Batch, in.Urgency, in.Reason, u.Name)
 	c.JSON(201, gin.H{"reference": ref, "urgency": in.Urgency})
 }
 

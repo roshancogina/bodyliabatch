@@ -16,13 +16,17 @@ export class AuthExpired extends Error {
 
 export async function adminApi<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const session = loadSession()
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData
+  const headers: Record<string, string> = {
+    ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
+  }
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json'
+  }
   const res = await fetch(`${apiBase()}${path}`, {
     method: init.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
-    },
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    headers,
+    body: isFormData ? (init.body as FormData) : init.body === undefined ? undefined : JSON.stringify(init.body),
   })
   const data = (await res.json().catch(() => null)) as { error?: string } | null
   if (res.status === 401) throw new AuthExpired()

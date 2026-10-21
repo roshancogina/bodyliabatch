@@ -72,6 +72,16 @@ func purgeDemoRows(db *sql.DB) error {
 		}
 		return nil
 	}
+	// Purge demo reports (explicit refs and any demo @example.com addresses)
+	if err := q(`DELETE FROM report_timeline WHERE reference IN (SELECT reference FROM reports WHERE email LIKE '%@example.com')`); err != nil {
+		return err
+	}
+	if err := q(`DELETE FROM escalations WHERE reference IN (SELECT reference FROM reports WHERE email LIKE '%@example.com')`); err != nil {
+		return err
+	}
+	if err := q(`DELETE FROM reports WHERE email LIKE '%@example.com'`); err != nil {
+		return err
+	}
 	for _, ref := range demoReportRefs {
 		if err := q(`DELETE FROM report_timeline WHERE reference=$1`, ref); err != nil {
 			return err
@@ -92,6 +102,12 @@ func purgeDemoRows(db *sql.DB) error {
 		if err := q(`DELETE FROM batches WHERE batch=$1`, b); err != nil {
 			return err
 		}
+	}
+	if err := q(`DELETE FROM batches WHERE batch LIKE 'BDL-%'`); err != nil {
+		return err
+	}
+	if err := q(`DELETE FROM batch_aliases WHERE created_by='seed' AND batch NOT IN (SELECT batch FROM batches WHERE batch LIKE '%-2610-WL01')`); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err

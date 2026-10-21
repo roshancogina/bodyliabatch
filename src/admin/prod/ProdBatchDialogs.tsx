@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
-import { Loader2 } from 'lucide-react'
+import { Download, FileText, Loader2, Trash2 } from 'lucide-react'
 import type { BatchRecord } from '../../data/batches'
 import { adminApi } from '../admin-api'
 import { toast } from '../../lib/toast'
 import { Dialog, DialogContent } from '../../components/ui/dialog'
 import { Button } from '../../components/ui/button'
-import { Input, Textarea } from '../../components/ui/input'
+import { Input, NativeSelect, Textarea } from '../../components/ui/input'
 import { FormField } from '../../components/ui/form-field'
 import {
   csvRowSchema,
@@ -19,6 +19,13 @@ import {
   type LiftRecallInput,
   type RecallInput,
 } from '../schemas'
+
+interface SiteOption {
+  id: string
+  kind: string
+  name: string
+  archived: boolean
+}
 
 /**
  * Production batch operations (API-backed): edit release details, recall /
@@ -37,11 +44,24 @@ export function ProdBatchEditDialog({
   onClose: () => void
   onSaved: () => void
 }) {
+  const [sites, setSites] = useState<SiteOption[]>([])
+  const [coaFile, setCoaFile] = useState<File | null>(null)
+  const [coaError, setCoaError] = useState<string | null>(null)
+  const [removingCoa, setRemovingCoa] = useState(false)
+
   const form = useForm<EditBatchInput>({
     resolver: zodResolver(editBatchSchema(true)),
     defaultValues: { manufactured: '', expires: '', facility: '', lab: '', reason: '' },
   })
   const { handleSubmit, reset, formState } = form
+
+  // Fetch catalogue sites so added facilities and labs appear in dropdowns
+  useEffect(() => {
+    adminApi<{ sites: SiteOption[] }>('/api/admin/catalogue')
+      .then((data) => setSites(data.sites ?? []))
+      .catch(() => {})
+  }, [])
+
   // Re-seed the form whenever a different batch is opened.
   useEffect(() => {
     if (record) {
@@ -52,8 +72,14 @@ export function ProdBatchEditDialog({
         lab: record.lab,
         reason: '',
       })
+      setCoaFile(null)
+      setCoaError(null)
+      setRemovingCoa(false)
     }
   }, [record, reset])
+
+  const facilities = sites.filter((s) => s.kind === 'facility' && !s.archived)
+  const labs = sites.filter((s) => s.kind === 'lab' && !s.archived)
 
   const submit = handleSubmit(async (v) => {
     if (!record) return
@@ -68,6 +94,24 @@ export function ProdBatchEditDialog({
           reason: v.reason,
         },
       })
+
+      // If user chose to detach existing COA
+      if (removingCoa && !coaFile) {
+        await adminApi(`/api/admin/batches/${encodeURIComponent(record.batch)}/coa`, {
+          method: 'DELETE',
+        })
+      }
+
+      // If user selected a new COA to attach/replace
+      if (coaFile) {
+        const formData = new FormData()
+        formData.append('file', coaFile)
+        await adminApi(`/api/admin/batches/${encodeURIComponent(record.batch)}/coa`, {
+          method: 'POST',
+          body: formData,
+        })
+      }
+
       toast(`${record.batch} updated`, { description: 'The change is recorded in the audit log.' })
       onSaved()
       onClose()
@@ -92,11 +136,94 @@ export function ProdBatchEditDialog({
             {(a) => <Input {...a} type="date" {...form.register('expires')} />}
           </FormField>
           <FormField id="be-fac" label="Manufacturing facility" error={formState.errors.facility?.message}>
-            {(a) => <Input {...a} {...form.register('facility')} maxLength={120} />}
+            {(a) => (
+              <NativeSelect {...a} {...form.register('facility')}>
+                <option value="" disabled>Choose a facility</option>
+                {record.facility && !facilities.some((f) => f.name === record.facility) && (
+                  <option value={record.facility}>{record.facility} (current)</option>
+                )}
+                {facilities.map((f) => (
+                  <option key={f.id} value={f.name}>{f.name}</option>
+                ))}
+              </NativeSelect>
+            )}
           </FormField>
           <FormField id="be-lab" label="Testing lab" error={formState.errors.lab?.message}>
-            {(a) => <Input {...a} {...form.register('lab')} maxLength={120} />}
+            {(a) => (
+              <NativeSelect {...a} {...form.register('lab')}>
+                <option value="" disabled>Choose a testing lab</option>
+                {record.lab && !labs.some((l) => l.name === record.lab) && (
+                  <option value={record.lab}>{record.lab} (current)</option>
+                )}
+                {labs.map((l) => (
+                  <option key={l.id} value={l.name}>{l.name}</option>
+                ))}
+              </NativeSelect>
+            )}
           </FormField>
+
+          {/* Certificate of Analysis (COA) section */}
+          <div className="flex flex-col gap-2 rounded-md border border-mist bg-ivory p-3">
+            <span className="text-sm font-semibold text-graphite">Certificate of Analysis (COA)</span>
+            {record.coaFileName && !removingCoa ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="flex items-center gap-1.5 text-graphite font-medium">
+                  <FileText className="size-4 text-burgundy" aria-hidden="true" />
+                  {record.coaFileName}
+                </span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/bff/v1/batches/${encodeURIComponent(record.batch)}/coa`}
+                    download={record.coaFileName}
+                    className="inline-flex items-center gap-1 font-semibold text-burgundy underline underline-offset-4"
+                  >
+                    <Download className="size-3.5" aria-hidden="true" /> Download
+                  </a>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setRemovingCoa(true)}
+                    className="text-error hover:text-error"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" /> Remove
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="be-coa" className="text-xs text-muted">
+                {record.coaFileName && !removingCoa ? 'Replace with signed lab certificate' : 'Attach signed lab certificate'}{' '}
+                <span>(PDF, up to 10 MB)</span>
+              </label>
+              <input
+                id="be-coa"
+                type="file"
+                accept="application/pdf"
+                aria-describedby={coaError ? 'be-coa-err' : undefined}
+                aria-invalid={!!coaError}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null
+                  if (f && f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) {
+                    setCoaError('The certificate must be a PDF.')
+                    setCoaFile(null)
+                    return
+                  }
+                  if (f && f.size > 10 * 1024 * 1024) {
+                    setCoaError('The certificate must be 10 MB or smaller.')
+                    setCoaFile(null)
+                    return
+                  }
+                  setCoaError(null)
+                  setCoaFile(f)
+                }}
+                className="flex min-h-11 w-full rounded-md border border-taupe bg-white px-3 py-1.5 text-sm text-graphite file:mr-3 file:rounded file:border-0 file:bg-sand file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-burgundy"
+              />
+              {coaError && <p id="be-coa-err" className="text-xs font-medium text-error">{coaError}</p>}
+            </div>
+          </div>
+
           <FormField
             id="be-reason"
             label="Reason for the change"

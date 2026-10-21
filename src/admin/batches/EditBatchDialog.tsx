@@ -57,10 +57,28 @@ export function EditBatchDialog({ user, batch, open, onOpenChange }: { user: Sta
               {(a) => <Input {...a} {...register('expires')} type="date" />}
             </FormField>
             <FormField id="eb-fac" label="Facility" error={errors.facility?.message}>
-              {(a) => <NativeSelect {...a} {...register('facility')}>{facilities.map((f) => <option key={f.id}>{f.name}</option>)}</NativeSelect>}
+              {(a) => (
+                <NativeSelect {...a} {...register('facility')}>
+                  {batch.facility && !facilities.some((f) => f.name === batch.facility) && (
+                    <option value={batch.facility}>{batch.facility} (current)</option>
+                  )}
+                  {facilities.map((f) => (
+                    <option key={f.id} value={f.name}>{f.name}</option>
+                  ))}
+                </NativeSelect>
+              )}
             </FormField>
             <FormField id="eb-lab" label="Testing lab" error={errors.lab?.message}>
-              {(a) => <NativeSelect {...a} {...register('lab')}>{labs.map((l) => <option key={l.id}>{l.name}</option>)}</NativeSelect>}
+              {(a) => (
+                <NativeSelect {...a} {...register('lab')}>
+                  {batch.lab && !labs.some((l) => l.name === batch.lab) && (
+                    <option value={batch.lab}>{batch.lab} (current)</option>
+                  )}
+                  {labs.map((l) => (
+                    <option key={l.id} value={l.name}>{l.name}</option>
+                  ))}
+                </NativeSelect>
+              )}
             </FormField>
           </div>
           <FormField id="eb-reason" label="Reason for the correction" optional={!checked} error={errors.reason?.message}>

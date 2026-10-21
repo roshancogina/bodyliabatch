@@ -7,6 +7,7 @@ import type { LookupResult } from '../lib/bff'
 import { Button } from './ui/button'
 import { LabReportDialog } from './LabReportDialog'
 import { downloadCertificate } from '../lib/pdf'
+import { batchCoaUrl } from '../lib/bff'
 import { toast } from '../lib/toast'
 import { SUPPORT_EMAIL } from '../data/catalog-static'
 
@@ -33,6 +34,7 @@ export function BatchFacts({ record, product, kind, onReport }: Props) {
     ...(record.mrp != null ? [['MRP', `₹${record.mrp.toLocaleString('en-IN')}`] as [string, React.ReactNode]] : []),
     ['Made at', record.facility],
     ['Tested by', record.lab],
+    ...(record.coaFileName ? [['Lab certificate', `Signed certificate on file (${record.coaFileName})`] as [string, React.ReactNode]] : []),
   ]
 
   return (
@@ -70,6 +72,24 @@ export function BatchFacts({ record, product, kind, onReport }: Props) {
           variant="outline"
           size="lg"
           onClick={async () => {
+            try {
+              const res = await fetch(batchCoaUrl(record.batch))
+              if (res.ok) {
+                const blob = await res.blob()
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = record.coaFileName || `${record.batch}-certificate.pdf`
+                document.body.appendChild(a)
+                a.click()
+                a.remove()
+                URL.revokeObjectURL(url)
+                toast('Certificate downloaded', { description: a.download })
+                return
+              }
+            } catch {
+              // fallback to client-side pdf generator if offline/mock
+            }
             await downloadCertificate(record, product)
             toast('Certificate downloaded', { description: `${record.batch}-certificate.pdf` })
           }}

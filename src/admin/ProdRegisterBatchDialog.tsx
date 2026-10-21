@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Controller, useFieldArray, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2 } from 'lucide-react'
@@ -18,12 +18,17 @@ const DEFAULT_COA = [
   { test: 'Lead (Pb)', specification: '≤ 1.0 ppm', result: '', pass: true },
 ]
 
+interface SiteOption {
+  id: string
+  kind: string
+  name: string
+  archived: boolean
+}
+
 /**
  * Production register-batch dialog — API-backed counterpart of the preview
- * RegisterBatchDialog (which writes to lib/store and throws in prod builds).
- * Submits POST /api/admin/batches (server validates canonical format, product
- * cross-check, alias uniqueness, COA rows; audited). Facility/lab are free
- * text — the Go API accepts plain strings.
+ * RegisterBatchDialog. Facility/lab are populated from catalogue sites to prevent
+ * typing errors. Also attaches optional signed lab certificate (PDF).
  */
 export function ProdRegisterBatchDialog({
   open,
@@ -34,6 +39,10 @@ export function ProdRegisterBatchDialog({
   onOpenChange: (o: boolean) => void
   onRegistered: (batch: string) => void
 }) {
+  const [sites, setSites] = useState<SiteOption[]>([])
+  const [coaFile, setCoaFile] = useState<File | null>(null)
+  const [coaFileError, setCoaFileError] = useState<string | null>(null)
+
   const {
     register,
     control,
@@ -46,6 +55,18 @@ export function ProdRegisterBatchDialog({
     defaultValues: { batch: '', aliases: '', manufactured: '', expires: '', facility: '', lab: '', coa: DEFAULT_COA },
   })
   const { fields, append, remove } = useFieldArray({ control, name: 'coa' })
+
+  // Fetch catalogue sites on open so newly added facilities and labs are immediately selectable
+  useEffect(() => {
+    if (open) {
+      adminApi<{ sites: SiteOption[] }>('/api/admin/catalogue')
+        .then((data) => setSites(data.sites ?? []))
+        .catch(() => {})
+    }
+  }, [open])
+
+  const facilities = sites.filter((s) => s.kind === 'facility' && !s.archived)
+  const labs = sites.filter((s) => s.kind === 'lab' && !s.archived)
 
   const submit = handleSubmit(async (v) => {
     try {
@@ -60,14 +81,28 @@ export function ProdRegisterBatchDialog({
           lab: v.lab,
           aliases: v.aliases.map((code) => ({ code, kind: 'manufacturer' })),
           coa: v.coa,
+          coaFileName: coaFile ? coaFile.name : undefined,
         },
       })
+
+      // Upload the attached signed lab certificate if provided
+      if (coaFile) {
+        const formData = new FormData()
+        formData.append('file', coaFile)
+        await adminApi(`/api/admin/batches/${encodeURIComponent(v.batch)}/coa`, {
+          method: 'POST',
+          body: formData,
+        })
+      }
+
       toast(`${v.batch} registered`, {
         description: v.aliases.length
           ? `Customers can verify it via ${v.aliases.length} mapped code${v.aliases.length === 1 ? '' : 's'} too.`
           : 'Customers can verify it now.',
       })
       reset()
+      setCoaFile(null)
+      setCoaFileError(null)
       onOpenChange(false)
       onRegistered(v.batch)
     } catch (e) {
@@ -90,7 +125,11 @@ export function ProdRegisterBatchDialog({
   })
 
   const close = (o: boolean) => {
-    if (!o) reset()
+    if (!o) {
+      reset()
+      setCoaFile(null)
+      setCoaFileError(null)
+    }
     onOpenChange(o)
   }
 
@@ -121,11 +160,25 @@ export function ProdRegisterBatchDialog({
             <FormField id="prb-exp" label="Expires on" error={errors.expires?.message}>
               {(a) => <Input {...a} {...register('expires')} type="date" />}
             </FormField>
-            <FormField id="prb-facility" label="Facility" description="Where the batch was packed, e.g. Goa Facility 1" error={errors.facility?.message}>
-              {(a) => <Input {...a} {...register('facility')} />}
+            <FormField id="prb-facility" label="Facility" description="Where the batch was packed" error={errors.facility?.message}>
+              {(a) => (
+                <NativeSelect {...a} {...register('facility')} defaultValue="">
+                  <option value="" disabled>Choose a facility</option>
+                  {facilities.map((f) => (
+                    <option key={f.id} value={f.name}>{f.name}</option>
+                  ))}
+                </NativeSelect>
+              )}
             </FormField>
-            <FormField id="prb-lab" label="Testing lab" description="e.g. Eurofins Analytical Labs" error={errors.lab?.message}>
-              {(a) => <Input {...a} {...register('lab')} />}
+            <FormField id="prb-lab" label="Testing lab" description="Who signed off on the COA" error={errors.lab?.message}>
+              {(a) => (
+                <NativeSelect {...a} {...register('lab')} defaultValue="">
+                  <option value="" disabled>Choose a testing lab</option>
+                  {labs.map((l) => (
+                    <option key={l.id} value={l.name}>{l.name}</option>
+                  ))}
+                </NativeSelect>
+              )}
             </FormField>
           </div>
 
@@ -173,6 +226,38 @@ export function ProdRegisterBatchDialog({
               Add test
             </Button>
           </fieldset>
+
+          {/* Optional Signed Lab Certificate Attachment */}
+          <div className="flex flex-col gap-1.5 border-t border-mist pt-5">
+            <label htmlFor="prb-coa" className="text-sm font-semibold text-graphite">
+              Signed lab certificate <span className="font-normal text-muted">(optional)</span>
+            </label>
+            <p id="prb-coa-desc" className="text-sm text-muted">PDF from the lab, up to 10 MB. If you skip this, customers get a certificate generated from the results above.</p>
+            <input
+              id="prb-coa"
+              type="file"
+              accept="application/pdf"
+              aria-describedby={coaFileError ? 'prb-coa-desc prb-coa-err' : 'prb-coa-desc'}
+              aria-invalid={!!coaFileError}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null
+                if (f && f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) {
+                  setCoaFileError('The certificate must be a PDF.')
+                  setCoaFile(null)
+                  return
+                }
+                if (f && f.size > 10 * 1024 * 1024) {
+                  setCoaFileError('The certificate must be 10 MB or smaller.')
+                  setCoaFile(null)
+                  return
+                }
+                setCoaFileError(null)
+                setCoaFile(f)
+              }}
+              className="flex min-h-11 w-full rounded-md border border-taupe bg-white px-3 py-1.5 text-base text-graphite file:mr-3 file:rounded file:border-0 file:bg-sand file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-burgundy"
+            />
+            {coaFileError && <p id="prb-coa-err" className="text-sm font-medium text-error">{coaFileError}</p>}
+          </div>
 
           <div className="flex flex-col-reverse gap-3 border-t border-mist pt-5 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => close(false)}>Cancel</Button>

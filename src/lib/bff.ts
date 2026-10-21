@@ -213,3 +213,10 @@ export async function remoteTrackReport(reference: string, email: string, captch
     base,
   )
 }
+
+/** Direct URL for the downloadable batch COA (PDF) — unauthenticated, alias-tolerant. */
+export function batchCoaUrl(batch: string, base = apiBase()): string {
+  return `${base}/bff/v1/batches/${encodeURIComponent(normaliseBatch(batch))}/coa`
+}
+
+

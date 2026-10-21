@@ -7,6 +7,7 @@ import { cn } from '../lib/utils'
 
 const LINKS: { page: PublicPage; label: string }[] = [
   { page: 'home', label: 'Verify a pack' },
+  { page: 'report', label: 'Report an issue' },
   { page: 'track', label: 'Track a report' },
   { page: 'recalls', label: 'Active recalls' },
   { page: 'faq', label: 'How it works' },
@@ -32,7 +33,7 @@ export function SiteHeader({
     setOpen(false)
     navigate(p)
   }
-  const isCurrent = (p: PublicPage) => current === p || (p === 'home' && ['result', 'report', 'submitted'].includes(current))
+  const isCurrent = (p: PublicPage) => current === p || (p === 'home' && ['result'].includes(current)) || (p === 'report' && ['submitted'].includes(current))
 
   return (
     <header className="border-b border-mist bg-ivory">

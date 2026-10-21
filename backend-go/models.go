@@ -79,16 +79,19 @@ type TimelineEvent struct {
 }
 
 type Report struct {
-	Reference  string          `json:"reference"`
-	FullName   string          `json:"fullName"`
-	Email      string          `json:"email"`
-	Phone      *string         `json:"phone,omitempty"`
-	Batch      string          `json:"batch"`
-	Channel    string          `json:"channel"`
-	Message    string          `json:"message"`
-	PhotoName  *string         `json:"photoName,omitempty"`
-	CreatedAt  time.Time       `json:"createdAt"`
-	Status     string          `json:"status"`
-	Assignee   *string         `json:"assignee,omitempty"`
-	Timeline   []TimelineEvent `json:"timeline"`
+	Reference     string          `json:"reference"`
+	FullName      string          `json:"fullName"`
+	Email         string          `json:"email"`
+	Phone         *string         `json:"phone,omitempty"`
+	Batch         string          `json:"batch"`
+	Channel       string          `json:"channel"`
+	OrderNumber   *string         `json:"orderNumber,omitempty"`
+	PurchaseDate  *string         `json:"purchaseDate,omitempty"`
+	BatchVerified bool            `json:"batchVerified"`
+	Message       string          `json:"message"`
+	PhotoName     *string         `json:"photoName,omitempty"`
+	CreatedAt     time.Time       `json:"createdAt"`
+	Status        string          `json:"status"`
+	Assignee      *string         `json:"assignee,omitempty"`
+	Timeline      []TimelineEvent `json:"timeline"`
 }

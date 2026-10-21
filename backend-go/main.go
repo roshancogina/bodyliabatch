@@ -73,6 +73,7 @@ func newRouter(db *sql.DB) *ginEngine {
 	bff := r.Group("/bff/v1")
 	{
 		bff.GET("/batches/:batch", app.handleLookup)
+		bff.GET("/batches/:batch/coa", app.handleBatchCOADownload)
 		bff.GET("/captcha/challenge", app.handleCaptchaChallenge)
 		bff.POST("/reports", app.handleSubmitReport)
 		bff.POST("/reports/track", app.handleTrackReport)
@@ -96,6 +97,8 @@ func newRouter(db *sql.DB) *ginEngine {
 		admin.POST("/import/batches", app.handleAdminImportBatches)
 		admin.POST("/batches/:batch/aliases", app.handleAddAlias)
 		admin.DELETE("/batches/:batch/aliases/:alias", app.handleRemoveAlias)
+		admin.POST("/batches/:batch/coa", app.handleAdminUploadCOA)
+		admin.DELETE("/batches/:batch/coa", app.handleAdminDeleteCOA)
 		admin.GET("/reports", app.handleAdminListReports)
 		admin.GET("/reports/:ref", app.handleAdminGetReport)
 		admin.PATCH("/reports/:ref", app.handleAdminUpdateReport)
