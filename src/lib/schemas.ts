@@ -88,6 +88,8 @@ export const reportSchema = z.object({
   channel: z.enum(PURCHASE_CHANNELS, {
     errorMap: () => ({ message: 'Choose where you bought the pack.' }),
   }),
+  orderNumber: z.string().trim().max(60, 'Keep order/invoice number to 60 characters or fewer.').optional(),
+  purchaseDate: z.string().trim().optional(),
   photo: z
     .custom<FileList | undefined>()
     .optional()

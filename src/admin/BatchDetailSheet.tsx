@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { format } from 'date-fns'
-import { AlertOctagon, FileText, Pencil, RotateCcw } from 'lucide-react'
+import { AlertOctagon, Download, FileText, Pencil, RotateCcw } from 'lucide-react'
 import type { StaffUser } from '../data/admin-seed'
 import type { BatchRecord } from '../data/batches'
 import { getProduct } from '../lib/products'
 import { useStore } from '../lib/store'
 import { can } from '../lib/auth'
+import { batchCoaUrl } from '../lib/bff'
 import { Sheet } from '../components/ui/sheet'
 import { Button } from '../components/ui/button'
 import { BatchStatusBadge } from './BatchStatusBadge'
@@ -31,6 +32,26 @@ export function BatchDetailSheet({ user, batch, onClose, go }: { user: StaffUser
   const fmt = (d: string) => format(new Date(d), 'd MMM yyyy')
   const checks = lookupSeries(batch.batch)
   const maxC = Math.max(...checks, 1)
+
+  const details: [string, React.ReactNode][] = [
+    ['Manufactured', fmt(batch.manufactured)],
+    ['Expires', fmt(batch.expires)],
+    ['Facility', batch.facility],
+    ['Testing lab', batch.lab],
+    ['First public check', batch.firstCheckedAt ? fmt(batch.firstCheckedAt) : 'Not yet checked — free to edit'],
+    ['Lab certificate', (
+      <div className="flex flex-wrap items-center gap-2">
+        <span>{batch.coaFileName ?? 'Generated from results'}</span>
+        <a
+          href={batchCoaUrl(batch.batch)}
+          download={batch.coaFileName || `${batch.batch}-certificate.pdf`}
+          className="inline-flex items-center gap-1 font-semibold text-burgundy underline underline-offset-4"
+        >
+          <Download className="size-3.5" aria-hidden="true" /> Download
+        </a>
+      </div>
+    )],
+  ]
 
   return (
     <>
@@ -74,14 +95,7 @@ export function BatchDetailSheet({ user, batch, onClose, go }: { user: StaffUser
         </div>
 
         <dl className="mt-6 border-t border-gold text-sm">
-          {[
-            ['Manufactured', fmt(batch.manufactured)],
-            ['Expires', fmt(batch.expires)],
-            ['Facility', batch.facility],
-            ['Testing lab', batch.lab],
-            ['First public check', batch.firstCheckedAt ? fmt(batch.firstCheckedAt) : 'Not yet checked — free to edit'],
-            ['Lab certificate', batch.coaFileName ?? 'Generated from results'],
-          ].map(([k, v]) => (
+          {details.map(([k, v]) => (
             <div key={k} className="grid grid-cols-[9rem_1fr] gap-4 border-b border-mist py-2.5">
               <dt className="text-muted">{k}</dt>
               <dd className="tabular text-graphite">{v}</dd>

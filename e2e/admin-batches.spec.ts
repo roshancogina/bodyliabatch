@@ -105,6 +105,67 @@ test.describe('admin batches + aliases (console)', () => {
     expect([400, 409]).toContain(dup.status())
   })
 
+  test('admin attach and detach COA PDF @api', async ({ request }) => {
+    const token = await login(request)
+    const batch = 'PE-2610-WL01'
+    const pdfContent = Buffer.from('%PDF-1.4 sample lab report for PE-2610-WL01 %%EOF')
+
+    // Upload COA
+    const upload = await request.post(`${API}/api/admin/batches/${batch}/coa`, {
+      headers: { Authorization: `Bearer ${token}` },
+      multipart: {
+        file: {
+          name: 'Eurofins_Report_PE.pdf',
+          mimeType: 'application/pdf',
+          buffer: pdfContent,
+        },
+      },
+    })
+    expect(upload.status()).toBe(200)
+
+    // Download returns uploaded COA
+    const dl = await request.get(`${API}/bff/v1/batches/${batch}/coa`)
+    expect(dl.status()).toBe(200)
+    expect(dl.headers()['content-disposition']).toContain('Eurofins_Report_PE.pdf')
+    expect(await dl.body()).toEqual(pdfContent)
+
+    // Delete COA
+    const del = await request.delete(`${API}/api/admin/batches/${batch}/coa`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    expect(del.status()).toBe(200)
+
+    // Download falls back to standard generated PDF
+    const dlFallback = await request.get(`${API}/bff/v1/batches/${batch}/coa`)
+    expect(dlFallback.status()).toBe(200)
+    expect(dlFallback.headers()['content-type']).toContain('application/pdf')
+    const fallbackBody = await dlFallback.body()
+    expect(fallbackBody.toString('utf-8', 0, 5)).toBe('%PDF-')
+  })
+
+  test('admin edit batch facility and lab dropdown selections @api', async ({ request }) => {
+    const token = await login(request)
+    const batch = 'FN-2610-WL01'
+    const patch = await request.patch(`${API}/api/admin/batches/${batch}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        facility: 'Unit 1, Baddi, Himachal Pradesh',
+        lab: 'TÜV SÜD South Asia, Chennai',
+        reason: 'E2E facility and lab change',
+      },
+    })
+    expect(patch.status()).toBe(200)
+
+    const get = await request.get(`${API}/api/admin/batches?q=${batch}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    expect(get.status()).toBe(200)
+    const rows = await get.json()
+    const updated = rows.find((r: any) => r.batch === batch)
+    expect(updated.facility).toBe('Unit 1, Baddi, Himachal Pradesh')
+    expect(updated.lab).toBe('TÜV SÜD South Asia, Chennai')
+  })
+
   test('console login + batches page loads @e2e', async ({ page }) => {
     await page.goto('/#/console')
     // Staff console shows the sign-in form first

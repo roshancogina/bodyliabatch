@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { BATCHES } from '../data/mock-batches'
 import { CaptchaError } from './bff'
 import { mockLookup, mockSubmitReport, mockTrackReport, mockSearch, mockBatchList, resetMockRateLimit } from './mock-bff'
-import { fetchRecalls, stubApiBaseForTests } from './bff'
+import { batchCoaUrl, fetchRecalls, stubApiBaseForTests } from './bff'
 import { createChallenge, solveChallenge } from './captcha'
 import { store } from './store'
 
@@ -68,5 +68,10 @@ describe('mock BFF client (dev/test only)', () => {
     const { reference } = await mockSubmitReport(payload, testToken())
     await expect(mockTrackReport(reference, 'mock@example.com')).rejects.toBeInstanceOf(CaptchaError)
     expect((await mockTrackReport(reference, 'mock@example.com', testToken())).found).toBe(true)
+  })
+
+  it('batchCoaUrl formats download URL with canonical and alias inputs', () => {
+    expect(batchCoaUrl('PE 2610 WL01', 'https://batch.bodylia.in')).toBe('https://batch.bodylia.in/bff/v1/batches/PE-2610-WL01/coa')
+    expect(batchCoaUrl('2K26001', 'https://batch.bodylia.in')).toBe('https://batch.bodylia.in/bff/v1/batches/2K26001/coa')
   })
 })

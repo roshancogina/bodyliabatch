@@ -105,21 +105,25 @@ const openEdit = async (batch) => {
   await page.waitForSelector('[role="dialog"]', { timeout: 5_000 })
 }
 await openEdit('PE-2610-WL01')
-const facilityInput = dialog().getByLabel('Manufacturing facility')
-const originalFacility = await facilityInput.inputValue()
-await facilityInput.fill(MFG_FACILITY)
+const facilitySelect = dialog().getByLabel('Manufacturing facility')
+const originalFacility = await facilitySelect.inputValue()
+const availableOptions = await facilitySelect
+  .locator('option')
+  .evaluateAll((opts) => opts.map((o) => o.value).filter((v) => v && !v.includes('(current)')))
+const alternateFacility = availableOptions.find((v) => v !== originalFacility) || availableOptions[0]
+await facilitySelect.selectOption(alternateFacility)
 await dialog().getByLabel('Reason for the change').fill('QA sweep: temporary facility value, restored immediately after.')
 await dialog().getByRole('button', { name: 'Save changes' }).click()
 await expectGone('edit dialog')
 await page.waitForTimeout(600)
 await openEdit('PE-2610-WL01')
 const persisted = await dialog().getByLabel('Manufacturing facility').inputValue()
-if (persisted !== MFG_FACILITY) await fail(`edit did not persist (got "${persisted}")`)
-await dialog().getByLabel('Manufacturing facility').fill(originalFacility)
+if (persisted !== alternateFacility) await fail(`edit did not persist (got "${persisted}", expected "${alternateFacility}")`)
+await dialog().getByLabel('Manufacturing facility').selectOption(originalFacility)
 await dialog().getByLabel('Reason for the change').fill('QA sweep: restoring the original facility value after verification.')
 await dialog().getByRole('button', { name: 'Save changes' }).click()
 await expectGone('facility restore dialog')
-step('batch edit round-trip (reason enforced, value persisted)')
+step('batch edit round-trip (dropdown selection, reason enforced, value persisted)')
 
 // ---- Batches: recall + restore (public state flips) ----
 await page.getByRole('button', { name: 'Recall FE-2610-WL01' }).click()
@@ -161,6 +165,13 @@ if (!(await page.getByText(IMPORT_ALIAS).first().isVisible().catch(() => false))
 const lookup = await page.request.get(`${BASE}/bff/v1/batches/${IMPORT_ALIAS}`)
 if (lookup.status() !== 200) await fail(`public lookup of imported alias = ${lookup.status()}`)
 step('CSV import (batch + alias live, public lookup resolves)')
+
+// ---- COA: universal download for any batch ----
+const coaRes = await page.request.get(`${BASE}/bff/v1/batches/PE-2610-WL01/coa`)
+if (coaRes.status() !== 200) await fail(`COA download status = ${coaRes.status()}`)
+const coaType = coaRes.headers()['content-type'] || ''
+if (!coaType.includes('pdf')) await fail(`COA content-type = ${coaType}`)
+step('COA universal download (PDF available via public BFF)')
 
 
 // ---- Catalogue: product add → edit → remove ----

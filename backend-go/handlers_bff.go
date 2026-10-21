@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"time"
 )
@@ -71,4 +72,33 @@ func (a *App) handleRecalls(c *gin.Context) {
 		out = []*BatchRecord{}
 	}
 	c.JSON(200, out)
+}
+
+// GET /bff/v1/batches/:batch/coa — public download of COA for any batch.
+// If an admin attached a signed lab certificate (PDF), that file is returned.
+// Otherwise, a generated Certificate of Analysis PDF is returned on the fly.
+func (a *App) handleBatchCOADownload(c *gin.Context) {
+	raw := c.Param("batch")
+	rec, _, _, err := a.store.ResolveBatch(raw)
+	if err != nil || rec == nil {
+		c.JSON(404, gin.H{"error": "Batch not found."})
+		return
+	}
+
+	// 1. Check if an attached file exists in batch_coa_files
+	var fileName, contentType string
+	var fileData []byte
+	err = a.store.db.QueryRow(`SELECT file_name, content_type, file_data FROM batch_coa_files WHERE batch=$1`, rec.Batch).Scan(&fileName, &contentType, &fileData)
+	if err == nil && len(fileData) > 0 {
+		c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fileName))
+		c.Header("Cache-Control", "public, max-age=3600")
+		c.Data(200, contentType, fileData)
+		return
+	}
+
+	// 2. Generate standard Certificate of Analysis PDF on the fly
+	pdfData := generateCertificatePDF(rec)
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-certificate.pdf"`, rec.Batch))
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(200, "application/pdf", pdfData)
 }

@@ -8,6 +8,7 @@ import type { PublicPage } from '../../App'
 import { trackSchema, type TrackInput } from '../../lib/schemas'
 import { CaptchaError, trackReport, type TrackResult } from '../../lib/bff'
 import { describeCaptchaError } from '../../lib/captcha'
+import { SHOW_PREVIEW_HINTS } from '../../lib/runtime-env'
 import { SUPPORT_EMAIL } from '../../data/catalog-static'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
@@ -78,7 +79,9 @@ export function TrackReport({ prefill, navigate }: { prefill?: string; navigate:
             {isSubmitting ? 'Finding your report…' : 'Show status'}
           </Button>
         </form>
-        <p className="mt-6 text-sm text-muted">Preview: try SR-2026-04712 with divya.m@example.com</p>
+        {SHOW_PREVIEW_HINTS && (
+          <p className="mt-6 text-sm text-muted">Preview: try SR-2026-04712 with divya.m@example.com</p>
+        )}
       </div>
 
       <div aria-live="polite">

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2, MailCheck } from 'lucide-react'
 import { requestPasswordReset } from '../../lib/auth'
 import { describeCaptchaError } from '../../lib/captcha'
+import { SHOW_PREVIEW_HINTS } from '../../lib/runtime-env'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { FormField } from '../../components/ui/form-field'
@@ -42,9 +43,11 @@ export function ForgotPassword({ go, className }: { go: (s: AccessStep) => void;
           </p>
           <p className="mt-3 text-sm text-muted">Nothing arrived after 5 minutes? Check spam, or ask an administrator to confirm your email address.</p>
         </div>
-        <Button variant="outline" className="mt-6" onClick={() => go({ step: 'reset', email: sentTo })}>
-          Preview: open the reset link
-        </Button>
+        {SHOW_PREVIEW_HINTS && (
+          <Button variant="outline" className="mt-6" onClick={() => go({ step: 'reset', email: sentTo })}>
+            Preview: open the reset link
+          </Button>
+        )}
       </AuthLayout>
     )
 

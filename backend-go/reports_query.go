@@ -9,12 +9,15 @@ import (
 
 func (a *App) getReport(ref string) (*Report, error) {
 	rep := &Report{}
-	var phone, photo, assignee sql.NullString
+	var phone, photo, assignee, orderNum, purchDate sql.NullString
+	var batchVerified sql.NullBool
 	err := a.store.db.QueryRow(`SELECT reference, full_name, email, phone, batch_input,
-		channel, message, photo_name, created_at, status, assignee
+		channel, message, photo_name, created_at, status, assignee,
+		order_number, purchase_date, COALESCE(batch_verified, FALSE)
 		FROM reports WHERE reference=$1`, ref).Scan(
 		&rep.Reference, &rep.FullName, &rep.Email, &phone, &rep.Batch,
-		&rep.Channel, &rep.Message, &photo, &rep.CreatedAt, &rep.Status, &assignee)
+		&rep.Channel, &rep.Message, &photo, &rep.CreatedAt, &rep.Status, &assignee,
+		&orderNum, &purchDate, &batchVerified)
 	if err != nil {
 		return nil, err
 	}
@@ -26,6 +29,15 @@ func (a *App) getReport(ref string) (*Report, error) {
 	}
 	if assignee.Valid {
 		rep.Assignee = &assignee.String
+	}
+	if orderNum.Valid {
+		rep.OrderNumber = &orderNum.String
+	}
+	if purchDate.Valid {
+		rep.PurchaseDate = &purchDate.String
+	}
+	if batchVerified.Valid {
+		rep.BatchVerified = batchVerified.Bool
 	}
 	trows, err := a.store.db.Query(`SELECT at, by, kind, text FROM report_timeline
 		WHERE reference=$1 ORDER BY at`, ref)

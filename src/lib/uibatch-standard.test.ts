@@ -187,6 +187,8 @@ describe('UIBatch zod schemas', () => {
     expect(reportSchema.safeParse({ ...base, photo: badFile }).success).toBe(false)
     const bigFile = { length: 1, 0: { type: 'image/jpeg', size: 10 * 1024 * 1024 } } as unknown as FileList
     expect(reportSchema.safeParse({ ...base, photo: bigFile }).success).toBe(false)
+    expect(reportSchema.safeParse({ ...base, orderNumber: 'OD12345678', purchaseDate: '2026-10-18' }).success).toBe(true)
+    expect(reportSchema.safeParse({ ...base, orderNumber: 'x'.repeat(61) }).success).toBe(false)
   })
 
   it('canonicalBatchInputSchema length branches', () => {
